@@ -3,9 +3,11 @@ résolution d'identité (même en source unique, c'est la table qui fait foi).""
 
 import json
 
+import pandas as pd
 import psycopg
 
 from vivier_pipeline.core.aggregate import CompetitionAggregation
+from vivier_pipeline.core.percentiles import PeerGroupResult
 
 
 def upsert_competition(conn: psycopg.Connection, comp: dict) -> int:
@@ -131,6 +133,56 @@ def load_competition(conn: psycopg.Connection, agg: CompetitionAggregation) -> i
         club_id = club_ids[stat["team_id"]]
         upsert_season_stats(conn, player_id, competition_id, club_id, stat)
         rows_written += 1
+
+    return rows_written
+
+
+def fetch_percentile_input(conn: psycopg.Connection, min_minutes: int) -> pd.DataFrame:
+    rows = conn.execute(
+        """
+        SELECT pss.player_id, pss.season, p.position_group, c.tier, pss.metrics
+        FROM player_season_stats pss
+        JOIN players p ON p.id = pss.player_id
+        JOIN competitions c ON c.id = pss.competition_id
+        WHERE pss.minutes >= %s
+        """,
+        (min_minutes,),
+    ).fetchall()
+    return pd.DataFrame(
+        rows, columns=["player_id", "season", "position_group", "tier", "metrics"],
+    )
+
+
+def replace_percentiles(conn: psycopg.Connection, groups: list[PeerGroupResult]) -> int:
+    """`player_percentiles`/`peer_groups` sont des tables matérialisées,
+    recalculées intégralement à chaque run (cf. commentaire du schéma)."""
+    conn.execute("TRUNCATE player_percentiles, peer_groups CASCADE")
+
+    for group in groups:
+        conn.execute(
+            """
+            INSERT INTO peer_groups (id, label, position_group, season, min_minutes, sample_size)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            """,
+            (
+                group.peer_group_id, group.label, group.position_group,
+                group.season, group.min_minutes, group.sample_size,
+            ),
+        )
+
+    rows_written = 0
+    with conn.cursor() as cur:
+        for group in groups:
+            cur.executemany(
+                """
+                INSERT INTO player_percentiles
+                    (player_id, season, peer_group_id, metric, raw_value, percentile)
+                VALUES (%(player_id)s, %(season)s, %(peer_group_id)s,
+                        %(metric)s, %(raw_value)s, %(percentile)s)
+                """,
+                [{**p, "peer_group_id": group.peer_group_id} for p in group.percentiles],
+            )
+            rows_written += len(group.percentiles)
 
     return rows_written
 

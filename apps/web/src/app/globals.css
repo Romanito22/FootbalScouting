@@ -1,5 +1,21 @@
 @import "tailwindcss";
 
+@theme {
+  /* Palette — dossier papier annoté / cadran d'instrument, pas jeu vidéo. */
+  --color-ink: #0f1419;      /* fond */
+  --color-surface: #1a2229;  /* surfaces */
+  --color-paper: #d9d4c7;    /* texte principal */
+  --color-pitch: #4a7c59;    /* positif */
+  --color-spotlight: #c9a227; /* accent, alertes contrat */
+  --color-signal: #b04a3f;   /* négatif */
+
+  --font-display: var(--font-display), "Arial Narrow", sans-serif;
+  --font-sans: var(--font-text), system-ui, sans-serif;
+  --font-mono: var(--font-mono), ui-monospace, "SF Mono", Menlo, monospace;
+}
+
 body {
-  font-family: ui-monospace, "SF Mono", "IBM Plex Mono", Menlo, monospace;
+  background-color: var(--color-ink);
+  color: var(--color-paper);
+  font-family: var(--font-sans);
 }

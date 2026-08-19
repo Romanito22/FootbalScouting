@@ -5,16 +5,13 @@ jeu normales et elles ne comptent ni dans les minutes ni dans les stats.
 Les gardiens sont exclus : jeu de métriques séparé, pas construit ici.
 """
 
-import json
 from dataclasses import dataclass, field
-from pathlib import Path
 
 import pandas as pd
 from unidecode import unidecode
 
+from vivier_pipeline.core.metrics_registry import outfield_metric_keys
 from vivier_pipeline.core.positions import normalize_position
-
-METRICS_REGISTRY_PATH = Path(__file__).resolve().parents[3] / "metrics.json"
 
 # Cartes émises hors "Foul Committed" (ex. dissidence) sont sur "Bad Behaviour".
 YELLOW_CODES = {"Yellow Card", "Second Yellow"}
@@ -51,11 +48,6 @@ def _period_clocks(events: pd.DataFrame, event_type: str) -> dict[int, float]:
         else:
             clocks[period] = min(clocks.get(period, clock), clock)
     return clocks
-
-
-def _load_outfield_metric_keys() -> set[str]:
-    metrics = json.loads(METRICS_REGISTRY_PATH.read_text())
-    return {m["key"] for m in metrics if "GK" not in m["appliesTo"]}
 
 
 @dataclass
@@ -237,7 +229,7 @@ def aggregate_competition(
     events_by_match: dict[int, pd.DataFrame],
     lineups_by_match: dict[int, dict[str, pd.DataFrame]],
 ) -> CompetitionAggregation:
-    expected_keys = _load_outfield_metric_keys()
+    expected_keys = outfield_metric_keys()
 
     first = matches.iloc[0]
     result = CompetitionAggregation(competition={

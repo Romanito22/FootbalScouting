@@ -11,3 +11,15 @@ export type PositionGroup = (typeof POSITION_GROUPS)[number];
 
 /** Groupes de poste hors gardiens — les gardiens ont un jeu de métriques séparé, jamais mélangé. */
 export const OUTFIELD_POSITION_GROUPS = POSITION_GROUPS.filter((g) => g !== 'GK');
+
+/** Libellés affichés — utilisés par l'app et par le pipeline (label des groupes de pairs). */
+export const POSITION_GROUP_LABELS: Record<PositionGroup, string> = {
+  GK: 'Gardiens',
+  DC: 'Défenseurs centraux',
+  FB: 'Latéraux',
+  DM: 'Milieux défensifs',
+  CM: 'Milieux centraux',
+  AM: 'Milieux offensifs',
+  W: 'Ailiers',
+  ST: 'Attaquants',
+};

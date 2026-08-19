@@ -1,429 +1,453 @@
-[
-  {
-    "key": "goals",
-    "label": "Buts",
-    "family": "production",
-    "per90": true,
-    "higherIsBetter": true,
-    "format": "dec2",
-    "appliesTo": [
-      "DC",
-      "FB",
-      "DM",
-      "CM",
-      "AM",
-      "W",
-      "ST"
-    ]
+{
+  "minMinutes": 600,
+  "peerGroupSeasonSpan": 2,
+  "positionGroups": [
+    "GK",
+    "DC",
+    "FB",
+    "DM",
+    "CM",
+    "AM",
+    "W",
+    "ST"
+  ],
+  "positionGroupLabels": {
+    "GK": "Gardiens",
+    "DC": "Défenseurs centraux",
+    "FB": "Latéraux",
+    "DM": "Milieux défensifs",
+    "CM": "Milieux centraux",
+    "AM": "Milieux offensifs",
+    "W": "Ailiers",
+    "ST": "Attaquants"
   },
-  {
-    "key": "np_goals",
-    "label": "Buts hors pénalty",
-    "family": "production",
-    "per90": true,
-    "higherIsBetter": true,
-    "format": "dec2",
-    "appliesTo": [
-      "DC",
-      "FB",
-      "DM",
-      "CM",
-      "AM",
-      "W",
-      "ST"
-    ],
-    "derivedFrom": [
-      "shot_outcome",
-      "shot_type"
-    ]
-  },
-  {
-    "key": "shots",
-    "label": "Tirs",
-    "family": "production",
-    "per90": true,
-    "higherIsBetter": true,
-    "format": "dec2",
-    "appliesTo": [
-      "DC",
-      "FB",
-      "DM",
-      "CM",
-      "AM",
-      "W",
-      "ST"
-    ]
-  },
-  {
-    "key": "xg",
-    "label": "xG",
-    "family": "production",
-    "per90": true,
-    "higherIsBetter": true,
-    "format": "dec2",
-    "appliesTo": [
-      "DC",
-      "FB",
-      "DM",
-      "CM",
-      "AM",
-      "W",
-      "ST"
-    ],
-    "derivedFrom": [
-      "shot_statsbomb_xg"
-    ]
-  },
-  {
-    "key": "npxg",
-    "label": "npxG",
-    "family": "production",
-    "per90": true,
-    "higherIsBetter": true,
-    "format": "dec2",
-    "appliesTo": [
-      "DC",
-      "FB",
-      "DM",
-      "CM",
-      "AM",
-      "W",
-      "ST"
-    ],
-    "derivedFrom": [
-      "shot_statsbomb_xg",
-      "shot_type"
-    ],
-    "note": "xG hors penalties."
-  },
-  {
-    "key": "xg_per_shot",
-    "label": "xG / tir",
-    "family": "production",
-    "per90": false,
-    "higherIsBetter": true,
-    "format": "dec2",
-    "appliesTo": [
-      "DC",
-      "FB",
-      "DM",
-      "CM",
-      "AM",
-      "W",
-      "ST"
-    ],
-    "derivedFrom": [
-      "xg",
-      "shots"
-    ]
-  },
-  {
-    "key": "np_goals_minus_npxg",
-    "label": "Buts (hors pen.) − npxG",
-    "family": "production",
-    "per90": true,
-    "higherIsBetter": true,
-    "format": "dec2",
-    "appliesTo": [
-      "DC",
-      "FB",
-      "DM",
-      "CM",
-      "AM",
-      "W",
-      "ST"
-    ],
-    "derivedFrom": [
-      "np_goals",
-      "npxg"
-    ],
-    "note": "Sur/sous-performance de la finition. Toujours afficher npxG à côté, jamais à la place."
-  },
-  {
-    "key": "key_passes",
-    "label": "Passes clés",
-    "family": "creation",
-    "per90": true,
-    "higherIsBetter": true,
-    "format": "dec2",
-    "appliesTo": [
-      "DC",
-      "FB",
-      "DM",
-      "CM",
-      "AM",
-      "W",
-      "ST"
-    ],
-    "derivedFrom": [
-      "pass_shot_assist"
-    ]
-  },
-  {
-    "key": "assists",
-    "label": "Passes décisives",
-    "family": "creation",
-    "per90": true,
-    "higherIsBetter": true,
-    "format": "dec2",
-    "appliesTo": [
-      "DC",
-      "FB",
-      "DM",
-      "CM",
-      "AM",
-      "W",
-      "ST"
-    ],
-    "derivedFrom": [
-      "pass_goal_assist"
-    ]
-  },
-  {
-    "key": "xa",
-    "label": "xA",
-    "family": "creation",
-    "per90": true,
-    "higherIsBetter": true,
-    "format": "dec2",
-    "appliesTo": [
-      "DC",
-      "FB",
-      "DM",
-      "CM",
-      "AM",
-      "W",
-      "ST"
-    ],
-    "derivedFrom": [
-      "pass_assisted_shot_id",
-      "shot_statsbomb_xg"
-    ],
-    "note": "Proxy : somme du xG des tirs consécutifs à une passe du joueur."
-  },
-  {
-    "key": "dribbles_attempted",
-    "label": "Dribbles tentés",
-    "family": "possession",
-    "per90": true,
-    "higherIsBetter": true,
-    "format": "dec2",
-    "appliesTo": [
-      "DC",
-      "FB",
-      "DM",
-      "CM",
-      "AM",
-      "W",
-      "ST"
-    ]
-  },
-  {
-    "key": "dribbles_completed",
-    "label": "Dribbles réussis",
-    "family": "possession",
-    "per90": true,
-    "higherIsBetter": true,
-    "format": "dec2",
-    "appliesTo": [
-      "DC",
-      "FB",
-      "DM",
-      "CM",
-      "AM",
-      "W",
-      "ST"
-    ]
-  },
-  {
-    "key": "dribble_success_rate",
-    "label": "Taux de réussite dribbles",
-    "family": "possession",
-    "per90": false,
-    "higherIsBetter": true,
-    "format": "pct",
-    "appliesTo": [
-      "DC",
-      "FB",
-      "DM",
-      "CM",
-      "AM",
-      "W",
-      "ST"
-    ],
-    "derivedFrom": [
-      "dribbles_completed",
-      "dribbles_attempted"
-    ]
-  },
-  {
-    "key": "tackles_attempted",
-    "label": "Tacles tentés",
-    "family": "defense",
-    "per90": true,
-    "higherIsBetter": true,
-    "format": "dec2",
-    "appliesTo": [
-      "DC",
-      "FB",
-      "DM",
-      "CM",
-      "AM",
-      "W",
-      "ST"
-    ]
-  },
-  {
-    "key": "tackles_won",
-    "label": "Tacles réussis",
-    "family": "defense",
-    "per90": true,
-    "higherIsBetter": true,
-    "format": "dec2",
-    "appliesTo": [
-      "DC",
-      "FB",
-      "DM",
-      "CM",
-      "AM",
-      "W",
-      "ST"
-    ]
-  },
-  {
-    "key": "interceptions",
-    "label": "Interceptions",
-    "family": "defense",
-    "per90": true,
-    "higherIsBetter": true,
-    "format": "dec2",
-    "appliesTo": [
-      "DC",
-      "FB",
-      "DM",
-      "CM",
-      "AM",
-      "W",
-      "ST"
-    ]
-  },
-  {
-    "key": "clearances",
-    "label": "Dégagements",
-    "family": "defense",
-    "per90": true,
-    "higherIsBetter": true,
-    "format": "dec2",
-    "appliesTo": [
-      "DC",
-      "FB",
-      "DM",
-      "CM",
-      "AM",
-      "W",
-      "ST"
-    ]
-  },
-  {
-    "key": "blocks",
-    "label": "Contres",
-    "family": "defense",
-    "per90": true,
-    "higherIsBetter": true,
-    "format": "dec2",
-    "appliesTo": [
-      "DC",
-      "FB",
-      "DM",
-      "CM",
-      "AM",
-      "W",
-      "ST"
-    ]
-  },
-  {
-    "key": "ball_recoveries",
-    "label": "Ballons récupérés",
-    "family": "defense",
-    "per90": true,
-    "higherIsBetter": true,
-    "format": "dec2",
-    "appliesTo": [
-      "DC",
-      "FB",
-      "DM",
-      "CM",
-      "AM",
-      "W",
-      "ST"
-    ]
-  },
-  {
-    "key": "fouls_committed",
-    "label": "Fautes commises",
-    "family": "discipline",
-    "per90": true,
-    "higherIsBetter": false,
-    "format": "dec2",
-    "appliesTo": [
-      "DC",
-      "FB",
-      "DM",
-      "CM",
-      "AM",
-      "W",
-      "ST"
-    ]
-  },
-  {
-    "key": "fouls_won",
-    "label": "Fautes obtenues",
-    "family": "discipline",
-    "per90": true,
-    "higherIsBetter": true,
-    "format": "dec2",
-    "appliesTo": [
-      "DC",
-      "FB",
-      "DM",
-      "CM",
-      "AM",
-      "W",
-      "ST"
-    ]
-  },
-  {
-    "key": "yellow_cards",
-    "label": "Cartons jaunes",
-    "family": "discipline",
-    "per90": true,
-    "higherIsBetter": false,
-    "format": "dec2",
-    "appliesTo": [
-      "DC",
-      "FB",
-      "DM",
-      "CM",
-      "AM",
-      "W",
-      "ST"
-    ]
-  },
-  {
-    "key": "red_cards",
-    "label": "Cartons rouges",
-    "family": "discipline",
-    "per90": true,
-    "higherIsBetter": false,
-    "format": "dec2",
-    "appliesTo": [
-      "DC",
-      "FB",
-      "DM",
-      "CM",
-      "AM",
-      "W",
-      "ST"
-    ]
-  }
-]
+  "metrics": [
+    {
+      "key": "goals",
+      "label": "Buts",
+      "family": "production",
+      "per90": true,
+      "higherIsBetter": true,
+      "format": "dec2",
+      "appliesTo": [
+        "DC",
+        "FB",
+        "DM",
+        "CM",
+        "AM",
+        "W",
+        "ST"
+      ]
+    },
+    {
+      "key": "np_goals",
+      "label": "Buts hors pénalty",
+      "family": "production",
+      "per90": true,
+      "higherIsBetter": true,
+      "format": "dec2",
+      "appliesTo": [
+        "DC",
+        "FB",
+        "DM",
+        "CM",
+        "AM",
+        "W",
+        "ST"
+      ],
+      "derivedFrom": [
+        "shot_outcome",
+        "shot_type"
+      ]
+    },
+    {
+      "key": "shots",
+      "label": "Tirs",
+      "family": "production",
+      "per90": true,
+      "higherIsBetter": true,
+      "format": "dec2",
+      "appliesTo": [
+        "DC",
+        "FB",
+        "DM",
+        "CM",
+        "AM",
+        "W",
+        "ST"
+      ]
+    },
+    {
+      "key": "xg",
+      "label": "xG",
+      "family": "production",
+      "per90": true,
+      "higherIsBetter": true,
+      "format": "dec2",
+      "appliesTo": [
+        "DC",
+        "FB",
+        "DM",
+        "CM",
+        "AM",
+        "W",
+        "ST"
+      ],
+      "derivedFrom": [
+        "shot_statsbomb_xg"
+      ]
+    },
+    {
+      "key": "npxg",
+      "label": "npxG",
+      "family": "production",
+      "per90": true,
+      "higherIsBetter": true,
+      "format": "dec2",
+      "appliesTo": [
+        "DC",
+        "FB",
+        "DM",
+        "CM",
+        "AM",
+        "W",
+        "ST"
+      ],
+      "derivedFrom": [
+        "shot_statsbomb_xg",
+        "shot_type"
+      ],
+      "note": "xG hors penalties."
+    },
+    {
+      "key": "xg_per_shot",
+      "label": "xG / tir",
+      "family": "production",
+      "per90": false,
+      "higherIsBetter": true,
+      "format": "dec2",
+      "appliesTo": [
+        "DC",
+        "FB",
+        "DM",
+        "CM",
+        "AM",
+        "W",
+        "ST"
+      ],
+      "derivedFrom": [
+        "xg",
+        "shots"
+      ]
+    },
+    {
+      "key": "np_goals_minus_npxg",
+      "label": "Buts (hors pen.) − npxG",
+      "family": "production",
+      "per90": true,
+      "higherIsBetter": true,
+      "format": "dec2",
+      "appliesTo": [
+        "DC",
+        "FB",
+        "DM",
+        "CM",
+        "AM",
+        "W",
+        "ST"
+      ],
+      "derivedFrom": [
+        "np_goals",
+        "npxg"
+      ],
+      "note": "Sur/sous-performance de la finition. Toujours afficher npxG à côté, jamais à la place."
+    },
+    {
+      "key": "key_passes",
+      "label": "Passes clés",
+      "family": "creation",
+      "per90": true,
+      "higherIsBetter": true,
+      "format": "dec2",
+      "appliesTo": [
+        "DC",
+        "FB",
+        "DM",
+        "CM",
+        "AM",
+        "W",
+        "ST"
+      ],
+      "derivedFrom": [
+        "pass_shot_assist"
+      ]
+    },
+    {
+      "key": "assists",
+      "label": "Passes décisives",
+      "family": "creation",
+      "per90": true,
+      "higherIsBetter": true,
+      "format": "dec2",
+      "appliesTo": [
+        "DC",
+        "FB",
+        "DM",
+        "CM",
+        "AM",
+        "W",
+        "ST"
+      ],
+      "derivedFrom": [
+        "pass_goal_assist"
+      ]
+    },
+    {
+      "key": "xa",
+      "label": "xA",
+      "family": "creation",
+      "per90": true,
+      "higherIsBetter": true,
+      "format": "dec2",
+      "appliesTo": [
+        "DC",
+        "FB",
+        "DM",
+        "CM",
+        "AM",
+        "W",
+        "ST"
+      ],
+      "derivedFrom": [
+        "pass_assisted_shot_id",
+        "shot_statsbomb_xg"
+      ],
+      "note": "Proxy : somme du xG des tirs consécutifs à une passe du joueur."
+    },
+    {
+      "key": "dribbles_attempted",
+      "label": "Dribbles tentés",
+      "family": "possession",
+      "per90": true,
+      "higherIsBetter": true,
+      "format": "dec2",
+      "appliesTo": [
+        "DC",
+        "FB",
+        "DM",
+        "CM",
+        "AM",
+        "W",
+        "ST"
+      ]
+    },
+    {
+      "key": "dribbles_completed",
+      "label": "Dribbles réussis",
+      "family": "possession",
+      "per90": true,
+      "higherIsBetter": true,
+      "format": "dec2",
+      "appliesTo": [
+        "DC",
+        "FB",
+        "DM",
+        "CM",
+        "AM",
+        "W",
+        "ST"
+      ]
+    },
+    {
+      "key": "dribble_success_rate",
+      "label": "Taux de réussite dribbles",
+      "family": "possession",
+      "per90": false,
+      "higherIsBetter": true,
+      "format": "pct",
+      "appliesTo": [
+        "DC",
+        "FB",
+        "DM",
+        "CM",
+        "AM",
+        "W",
+        "ST"
+      ],
+      "derivedFrom": [
+        "dribbles_completed",
+        "dribbles_attempted"
+      ]
+    },
+    {
+      "key": "tackles_attempted",
+      "label": "Tacles tentés",
+      "family": "defense",
+      "per90": true,
+      "higherIsBetter": true,
+      "format": "dec2",
+      "appliesTo": [
+        "DC",
+        "FB",
+        "DM",
+        "CM",
+        "AM",
+        "W",
+        "ST"
+      ]
+    },
+    {
+      "key": "tackles_won",
+      "label": "Tacles réussis",
+      "family": "defense",
+      "per90": true,
+      "higherIsBetter": true,
+      "format": "dec2",
+      "appliesTo": [
+        "DC",
+        "FB",
+        "DM",
+        "CM",
+        "AM",
+        "W",
+        "ST"
+      ]
+    },
+    {
+      "key": "interceptions",
+      "label": "Interceptions",
+      "family": "defense",
+      "per90": true,
+      "higherIsBetter": true,
+      "format": "dec2",
+      "appliesTo": [
+        "DC",
+        "FB",
+        "DM",
+        "CM",
+        "AM",
+        "W",
+        "ST"
+      ]
+    },
+    {
+      "key": "clearances",
+      "label": "Dégagements",
+      "family": "defense",
+      "per90": true,
+      "higherIsBetter": true,
+      "format": "dec2",
+      "appliesTo": [
+        "DC",
+        "FB",
+        "DM",
+        "CM",
+        "AM",
+        "W",
+        "ST"
+      ]
+    },
+    {
+      "key": "blocks",
+      "label": "Contres",
+      "family": "defense",
+      "per90": true,
+      "higherIsBetter": true,
+      "format": "dec2",
+      "appliesTo": [
+        "DC",
+        "FB",
+        "DM",
+        "CM",
+        "AM",
+        "W",
+        "ST"
+      ]
+    },
+    {
+      "key": "ball_recoveries",
+      "label": "Ballons récupérés",
+      "family": "defense",
+      "per90": true,
+      "higherIsBetter": true,
+      "format": "dec2",
+      "appliesTo": [
+        "DC",
+        "FB",
+        "DM",
+        "CM",
+        "AM",
+        "W",
+        "ST"
+      ]
+    },
+    {
+      "key": "fouls_committed",
+      "label": "Fautes commises",
+      "family": "discipline",
+      "per90": true,
+      "higherIsBetter": false,
+      "format": "dec2",
+      "appliesTo": [
+        "DC",
+        "FB",
+        "DM",
+        "CM",
+        "AM",
+        "W",
+        "ST"
+      ]
+    },
+    {
+      "key": "fouls_won",
+      "label": "Fautes obtenues",
+      "family": "discipline",
+      "per90": true,
+      "higherIsBetter": true,
+      "format": "dec2",
+      "appliesTo": [
+        "DC",
+        "FB",
+        "DM",
+        "CM",
+        "AM",
+        "W",
+        "ST"
+      ]
+    },
+    {
+      "key": "yellow_cards",
+      "label": "Cartons jaunes",
+      "family": "discipline",
+      "per90": true,
+      "higherIsBetter": false,
+      "format": "dec2",
+      "appliesTo": [
+        "DC",
+        "FB",
+        "DM",
+        "CM",
+        "AM",
+        "W",
+        "ST"
+      ]
+    },
+    {
+      "key": "red_cards",
+      "label": "Cartons rouges",
+      "family": "discipline",
+      "per90": true,
+      "higherIsBetter": false,
+      "format": "dec2",
+      "appliesTo": [
+        "DC",
+        "FB",
+        "DM",
+        "CM",
+        "AM",
+        "W",
+        "ST"
+      ]
+    }
+  ]
+}

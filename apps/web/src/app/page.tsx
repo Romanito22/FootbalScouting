@@ -65,7 +65,12 @@ export default async function HealthPage() {
 
   return (
     <main className="mx-auto max-w-3xl px-6 py-10 text-sm">
-      <h1 className="mb-6 text-base font-bold tracking-tight">VIVIER — santé système</h1>
+      <div className="mb-6 flex items-baseline justify-between">
+        <h1 className="text-base font-bold tracking-tight">VIVIER — santé système</h1>
+        <a href="/players" className="text-neutral-400 underline hover:text-neutral-200">
+          joueurs →
+        </a>
+      </div>
 
       <section className="mb-6">
         <h2 className="mb-1 text-neutral-500">connexion postgres</h2>
