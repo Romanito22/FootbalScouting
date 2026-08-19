@@ -1,0 +1,32 @@
+services:
+  db:
+    image: pgvector/pgvector:pg17
+    container_name: vivier-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: vivier
+      POSTGRES_PASSWORD: vivier
+      POSTGRES_DB: vivier
+    ports:
+      # 5433 en façade : évite tout conflit avec un Postgres déjà installé sur la machine
+      - "5433:5432"
+    volumes:
+      - vivier-pgdata:/var/lib/postgresql/data
+      - ./packages/db/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vivier -d vivier"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    command:
+      # données événementielles = agrégations lourdes ; les valeurs par défaut sont trop basses
+      - "postgres"
+      - "-c"
+      - "shared_buffers=1GB"
+      - "-c"
+      - "work_mem=64MB"
+      - "-c"
+      - "maintenance_work_mem=512MB"
+
+volumes:
+  vivier-pgdata:

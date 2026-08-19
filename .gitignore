@@ -1,0 +1,17 @@
+node_modules/
+.next/
+dist/
+.env
+*.log
+*.tsbuildinfo
+
+# Données : jamais versionnées, jamais publiées
+data/
+.cache/
+~/soccerdata/
+pipeline/.venv/
+pipeline/data/
+**/*.parquet
+**/*.duckdb
+**/*.csv
+!**/fixtures/**/*.csv    # sauf les fixtures de test, petites et volontaires
