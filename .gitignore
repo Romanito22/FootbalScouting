@@ -4,6 +4,11 @@ dist/
 .env
 *.log
 *.tsbuildinfo
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
 
 # Données : jamais versionnées, jamais publiées
 data/

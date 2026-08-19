@@ -8,3 +8,6 @@ export const PEER_GROUP_SEASON_SPAN = 2;
 export const POSITION_GROUPS = ['GK', 'DC', 'FB', 'DM', 'CM', 'AM', 'W', 'ST'] as const;
 
 export type PositionGroup = (typeof POSITION_GROUPS)[number];
+
+/** Groupes de poste hors gardiens — les gardiens ont un jeu de métriques séparé, jamais mélangé. */
+export const OUTFIELD_POSITION_GROUPS = POSITION_GROUPS.filter((g) => g !== 'GK');
