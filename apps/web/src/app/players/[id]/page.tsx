@@ -2,11 +2,13 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { and, desc, eq } from 'drizzle-orm';
 import {
-  clubs, competitions, db, peerGroups, playerPercentiles, players, playerSeasonStats,
+  clubs, competitions, db, peerGroups, playerPercentiles, players, playerSeasonStats, shortlists,
 } from '@vivier/db';
 import { METRICS, MIN_MINUTES, POSITION_GROUP_LABELS } from '@vivier/metrics';
 import { PercentileRadar } from '@/components/PercentileRadar';
 import { formatMetricValue } from '@/lib/format';
+import { addPlayerToShortlist } from '@/app/shortlists/actions';
+import { NotesSection } from './NotesSection';
 
 const RADAR_KEYS = [
   'goals', 'xg', 'key_passes', 'xa',
@@ -58,6 +60,8 @@ export default async function PlayerPage({ params }: { params: Promise<{ id: str
     percentilesBySeason.set(row.season, list);
   }
 
+  const allShortlists = await db.select({ id: shortlists.id, name: shortlists.name }).from(shortlists);
+
   return (
     <main className="mx-auto max-w-3xl px-6 py-10">
       <header className="mb-8 flex items-start justify-between">
@@ -70,9 +74,29 @@ export default async function PlayerPage({ params }: { params: Promise<{ id: str
             {player.nationality && player.nationality.length > 0 && ` · ${player.nationality.join(', ')}`}
           </p>
         </div>
-        <Link href={`/players/${player.id}/similar`} className="font-mono text-xs text-paper/50 underline hover:text-spotlight">
-          joueurs similaires →
-        </Link>
+        <div className="flex flex-col items-end gap-2">
+          <div className="flex gap-4">
+            <Link href={`/players/${player.id}/similar`} className="font-mono text-xs text-paper/50 underline hover:text-spotlight">
+              joueurs similaires →
+            </Link>
+            <Link href={`/players/${player.id}/report`} className="font-mono text-xs text-paper/50 underline hover:text-spotlight">
+              rapport →
+            </Link>
+          </div>
+          {allShortlists.length > 0 && (
+            <form action={addPlayerToShortlist} className="flex items-center gap-2">
+              <input type="hidden" name="playerId" value={player.id} />
+              <select name="shortlistId" className="border border-paper/30 bg-ink px-2 py-1 text-xs text-paper">
+                {allShortlists.map((sl) => (
+                  <option key={sl.id} value={sl.id}>{sl.name}</option>
+                ))}
+              </select>
+              <button type="submit" className="border border-pitch/50 px-2 py-1 text-xs text-pitch hover:border-pitch hover:bg-pitch/10">
+                + shortlist
+              </button>
+            </form>
+          )}
+        </div>
       </header>
 
       {seasons.map((s) => {
@@ -156,6 +180,8 @@ export default async function PlayerPage({ params }: { params: Promise<{ id: str
           </section>
         );
       })}
+
+      <NotesSection playerId={player.id} />
     </main>
   );
 }

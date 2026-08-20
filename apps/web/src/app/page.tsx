@@ -74,6 +74,9 @@ export default async function HealthPage() {
           <a href="/players" className="text-neutral-400 underline hover:text-neutral-200">
             joueurs →
           </a>
+          <a href="/shortlists" className="text-neutral-400 underline hover:text-neutral-200">
+            shortlists →
+          </a>
           <a href="/admin/resolution-queue" className="text-neutral-400 underline hover:text-neutral-200">
             file d'attente →
           </a>

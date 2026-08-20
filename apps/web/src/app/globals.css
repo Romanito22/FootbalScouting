@@ -19,3 +19,14 @@ body {
   color: var(--color-paper);
   font-family: var(--font-sans);
 }
+
+/* Rapport de scouting exportable en PDF (spec §3.6) : fond papier plutôt
+   que le thème sombre — plus lisible et plus sobre à l'impression. */
+@media print {
+  :root {
+    --color-ink: #ffffff;
+    --color-surface: #f2efe8;
+    --color-paper: #17181a;
+  }
+}
+
