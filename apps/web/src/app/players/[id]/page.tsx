@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { and, desc, eq } from 'drizzle-orm';
 import {
@@ -59,14 +60,19 @@ export default async function PlayerPage({ params }: { params: Promise<{ id: str
 
   return (
     <main className="mx-auto max-w-3xl px-6 py-10">
-      <header className="mb-8">
-        <h1 className="font-display text-4xl font-bold tracking-tight text-paper">
-          {player.fullName}
-        </h1>
-        <p className="mt-1 font-mono text-sm text-paper/60">
-          {POSITION_GROUP_LABELS[player.positionGroup]}
-          {player.nationality && player.nationality.length > 0 && ` · ${player.nationality.join(', ')}`}
-        </p>
+      <header className="mb-8 flex items-start justify-between">
+        <div>
+          <h1 className="font-display text-4xl font-bold tracking-tight text-paper">
+            {player.fullName}
+          </h1>
+          <p className="mt-1 font-mono text-sm text-paper/60">
+            {POSITION_GROUP_LABELS[player.positionGroup]}
+            {player.nationality && player.nationality.length > 0 && ` · ${player.nationality.join(', ')}`}
+          </p>
+        </div>
+        <Link href={`/players/${player.id}/similar`} className="font-mono text-xs text-paper/50 underline hover:text-spotlight">
+          joueurs similaires →
+        </Link>
       </header>
 
       {seasons.map((s) => {
