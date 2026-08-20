@@ -68,6 +68,9 @@ export default async function HealthPage() {
       <div className="mb-6 flex items-baseline justify-between">
         <h1 className="text-base font-bold tracking-tight">VIVIER — santé système</h1>
         <div className="flex gap-4">
+          <a href="/search" className="text-neutral-400 underline hover:text-neutral-200">
+            recherche →
+          </a>
           <a href="/players" className="text-neutral-400 underline hover:text-neutral-200">
             joueurs →
           </a>

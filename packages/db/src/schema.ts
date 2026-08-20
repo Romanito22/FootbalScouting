@@ -163,6 +163,18 @@ export const playerPercentiles = pgTable('player_percentiles', {
   check('pp_percentile_range', sql`${t.percentile} BETWEEN 0 AND 100`),
 ]);
 
+/* ---------- Recherche (phase 4) ---------- */
+
+/** Critères de filtre sérialisés (poste, âge, minutes, seuil de percentile,
+ * etc.) — la même forme que les searchParams de la page /search. */
+export const savedSearches = pgTable('saved_searches', {
+  id: serial('id').primaryKey(),
+  name: text('name').notNull(),
+  filters: jsonb('filters').notNull().default({}),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  lastCheckedAt: timestamp('last_checked_at', { withTimezone: true }),
+});
+
 /* ---------- Similarité (phase 5) ---------- */
 
 export const playerVectors = pgTable('player_vectors', {

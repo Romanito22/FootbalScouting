@@ -4,6 +4,10 @@
  * groupe de pairs, silhouette fantôme de la médiane en pointillés, joueur en
  * trait plein. SVG custom : Recharts est trop rigide pour des bandes de
  * percentile par axe.
+ *
+ * `compact` : mini-radar sans grille ni libellés, pour une ligne de table
+ * (écran Recherche, spec §8.1) — la même signature visuelle, réduite à sa
+ * silhouette.
  */
 
 interface RadarMetric {
@@ -12,40 +16,48 @@ interface RadarMetric {
   percentile: number;
 }
 
-const SIZE = 480;
-const CENTER = SIZE / 2;
-const MAX_RADIUS = 110;
-const LABEL_RADIUS = MAX_RADIUS + 35;
-
-function pointAt(index: number, count: number, percentile: number): { x: number; y: number } {
+function pointAt(
+  index: number, count: number, percentile: number, center: number, maxRadius: number,
+): { x: number; y: number } {
   const angle = -Math.PI / 2 + (2 * Math.PI * index) / count;
-  const radius = (Math.max(0, Math.min(100, percentile)) / 100) * MAX_RADIUS;
-  return { x: CENTER + radius * Math.cos(angle), y: CENTER + radius * Math.sin(angle) };
+  const radius = (Math.max(0, Math.min(100, percentile)) / 100) * maxRadius;
+  return { x: center + radius * Math.cos(angle), y: center + radius * Math.sin(angle) };
 }
 
-function polygonPoints(count: number, percentile: number): string {
+function polygonPoints(count: number, percentile: number, center: number, maxRadius: number): string {
   return Array.from({ length: count }, (_, i) => {
-    const { x, y } = pointAt(i, count, percentile);
+    const { x, y } = pointAt(i, count, percentile, center, maxRadius);
     return `${x.toFixed(1)},${y.toFixed(1)}`;
   }).join(' ');
 }
 
-export function PercentileRadar({ metrics }: { metrics: RadarMetric[] }) {
+export function PercentileRadar({
+  metrics, compact = false,
+}: { metrics: RadarMetric[]; compact?: boolean }) {
   const n = metrics.length;
   if (n < 3) return null;
 
+  const size = compact ? 64 : 480;
+  const center = size / 2;
+  const maxRadius = compact ? size / 2 - 2 : 110;
+  const labelRadius = maxRadius + 35;
+
   const playerPoints = metrics
-    .map((m, i) => pointAt(i, n, m.percentile))
+    .map((m, i) => pointAt(i, n, m.percentile, center, maxRadius))
     .map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`)
     .join(' ');
 
   return (
-    <svg viewBox={`0 0 ${SIZE} ${SIZE}`} className="w-full max-w-md" role="img" aria-label="Radar de percentiles">
-      {/* grille de référence : quartiles */}
-      {[25, 50, 75, 100].map((p) => (
+    <svg
+      viewBox={`0 0 ${size} ${size}`}
+      className={compact ? 'h-16 w-16 shrink-0' : 'w-full max-w-md'}
+      role="img"
+      aria-label="Radar de percentiles"
+    >
+      {!compact && [25, 50, 75, 100].map((p) => (
         <polygon
           key={p}
-          points={polygonPoints(n, p)}
+          points={polygonPoints(n, p, center, maxRadius)}
           fill="none"
           stroke="var(--color-paper)"
           strokeOpacity={0.12}
@@ -54,16 +66,15 @@ export function PercentileRadar({ metrics }: { metrics: RadarMetric[] }) {
       ))}
 
       {/* bande interquartile 25-75 du groupe de pairs */}
-      <polygon points={polygonPoints(n, 75)} fill="var(--color-pitch)" fillOpacity={0.18} />
-      <polygon points={polygonPoints(n, 25)} fill="var(--color-ink)" />
+      <polygon points={polygonPoints(n, 75, center, maxRadius)} fill="var(--color-pitch)" fillOpacity={0.18} />
+      <polygon points={polygonPoints(n, 25, center, maxRadius)} fill="var(--color-ink)" />
 
-      {/* axes */}
-      {metrics.map((m, i) => {
-        const { x, y } = pointAt(i, n, 100);
+      {!compact && metrics.map((m, i) => {
+        const { x, y } = pointAt(i, n, 100, center, maxRadius);
         return (
           <line
             key={m.key}
-            x1={CENTER} y1={CENTER} x2={x} y2={y}
+            x1={center} y1={center} x2={x} y2={y}
             stroke="var(--color-paper)" strokeOpacity={0.15} strokeWidth={1}
           />
         );
@@ -71,12 +82,12 @@ export function PercentileRadar({ metrics }: { metrics: RadarMetric[] }) {
 
       {/* silhouette fantôme de la médiane */}
       <polygon
-        points={polygonPoints(n, 50)}
+        points={polygonPoints(n, 50, center, maxRadius)}
         fill="none"
         stroke="var(--color-paper)"
         strokeOpacity={0.45}
-        strokeWidth={1.5}
-        strokeDasharray="4 3"
+        strokeWidth={compact ? 1 : 1.5}
+        strokeDasharray={compact ? '2 2' : '4 3'}
       />
 
       {/* joueur, en trait plein */}
@@ -85,14 +96,13 @@ export function PercentileRadar({ metrics }: { metrics: RadarMetric[] }) {
         fill="var(--color-spotlight)"
         fillOpacity={0.22}
         stroke="var(--color-spotlight)"
-        strokeWidth={2}
+        strokeWidth={compact ? 1.25 : 2}
       />
 
-      {/* labels d'axe */}
-      {metrics.map((m, i) => {
+      {!compact && metrics.map((m, i) => {
         const labelAngle = -Math.PI / 2 + (2 * Math.PI * i) / n;
-        const lx = CENTER + LABEL_RADIUS * Math.cos(labelAngle);
-        const ly = CENTER + LABEL_RADIUS * Math.sin(labelAngle);
+        const lx = center + labelRadius * Math.cos(labelAngle);
+        const ly = center + labelRadius * Math.sin(labelAngle);
         const anchor =
           Math.cos(labelAngle) > 0.15 ? 'start' : Math.cos(labelAngle) < -0.15 ? 'end' : 'middle';
         return (
