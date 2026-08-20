@@ -10,7 +10,7 @@ le genre de bug que CLAUDE.md interdit de laisser passer sans test.
 """
 
 from vivier_pipeline.core.aggregate import _player_minutes, normalize_name
-from vivier_pipeline.core.positions import normalize_position
+from vivier_pipeline.core.positions import normalize_statsbomb_position
 
 # Horloges de période telles que dérivées des événements Half Start/Half End
 # d'un match avec prolongations (ex. une finale de Coupe du monde).
@@ -123,12 +123,12 @@ def test_normalize_name_strips_accents_and_case() -> None:
     assert normalize_name("Kylian Mbappé Lottin") == "kylian mbappe lottin"
 
 
-def test_normalize_position_covers_all_statsbomb_labels() -> None:
-    assert normalize_position("Goalkeeper") == "GK"
-    assert normalize_position("Right Center Back") == "DC"
-    assert normalize_position("Left Wing Back") == "FB"
-    assert normalize_position("Center Defensive Midfield") == "DM"
-    assert normalize_position("Right Center Midfield") == "CM"
-    assert normalize_position("Center Attacking Midfield") == "AM"
-    assert normalize_position("Right Wing") == "W"
-    assert normalize_position("Left Center Forward") == "ST"
+def test_normalize_statsbomb_position_covers_all_statsbomb_labels() -> None:
+    assert normalize_statsbomb_position("Goalkeeper") == "GK"
+    assert normalize_statsbomb_position("Right Center Back") == "DC"
+    assert normalize_statsbomb_position("Left Wing Back") == "FB"
+    assert normalize_statsbomb_position("Center Defensive Midfield") == "DM"
+    assert normalize_statsbomb_position("Right Center Midfield") == "CM"
+    assert normalize_statsbomb_position("Center Attacking Midfield") == "AM"
+    assert normalize_statsbomb_position("Right Wing") == "W"
+    assert normalize_statsbomb_position("Left Center Forward") == "ST"

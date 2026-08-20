@@ -67,9 +67,14 @@ export default async function HealthPage() {
     <main className="mx-auto max-w-3xl px-6 py-10 text-sm">
       <div className="mb-6 flex items-baseline justify-between">
         <h1 className="text-base font-bold tracking-tight">VIVIER — santé système</h1>
-        <a href="/players" className="text-neutral-400 underline hover:text-neutral-200">
-          joueurs →
-        </a>
+        <div className="flex gap-4">
+          <a href="/players" className="text-neutral-400 underline hover:text-neutral-200">
+            joueurs →
+          </a>
+          <a href="/admin/resolution-queue" className="text-neutral-400 underline hover:text-neutral-200">
+            file d'attente →
+          </a>
+        </div>
       </div>
 
       <section className="mb-6">

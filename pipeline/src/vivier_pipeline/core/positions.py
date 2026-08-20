@@ -1,9 +1,13 @@
-"""Correspondance entre la taxonomie de postes StatsBomb (23 libellés) et les
-8 groupes de poste VIVIER (packages/metrics POSITION_GROUPS). Table exhaustive,
-vérifiée contre l'intégralité des lineups de la Coupe du monde 2022.
-"""
+"""Correspondance entre les taxonomies de poste de chaque source et les
+8 groupes de poste VIVIER (packages/metrics POSITION_GROUPS).
 
-POSITION_GROUP_MAP: dict[str, str] = {
+`position_group` est NOT NULL dans le schéma : un poste non reconnu doit
+faire échouer l'ingestion plutôt que de deviner, silencieusement, un mauvais
+groupe (un DM classé CM à tort fausse tous ses percentiles)."""
+
+# StatsBomb — 23 libellés, table exhaustive vérifiée contre l'intégralité
+# des lineups de la Coupe du monde 2022 (cf. tests/test_aggregate.py).
+STATSBOMB_POSITION_GROUP_MAP: dict[str, str] = {
     "Goalkeeper": "GK",
     "Center Back": "DC",
     "Left Center Back": "DC",
@@ -30,8 +34,41 @@ POSITION_GROUP_MAP: dict[str, str] = {
 }
 
 
-def normalize_position(statsbomb_position: str) -> str:
+def normalize_statsbomb_position(statsbomb_position: str) -> str:
     try:
-        return POSITION_GROUP_MAP[statsbomb_position]
+        return STATSBOMB_POSITION_GROUP_MAP[statsbomb_position]
     except KeyError as exc:
         raise ValueError(f"Poste StatsBomb inconnu : {statsbomb_position!r}") from exc
+
+
+# Transfermarkt — `sub_position`, tel qu'observé sur le dataset Kaggle
+# davidcariboo/player-scores. Non vérifié contre un export réel (Kaggle est
+# hors de portée réseau dans l'environnement où ce module a été écrit) :
+# à confirmer/ajuster dès le premier import réel, `normalize_transfermarkt_position`
+# échoue explicitement sur tout libellé absent de cette table plutôt que de
+# deviner.
+TRANSFERMARKT_POSITION_GROUP_MAP: dict[str, str] = {
+    "Goalkeeper": "GK",
+    "Centre-Back": "DC",
+    "Left-Back": "FB",
+    "Right-Back": "FB",
+    "Defensive Midfield": "DM",
+    "Central Midfield": "CM",
+    "Attacking Midfield": "AM",
+    "Left Midfield": "W",
+    "Right Midfield": "W",
+    "Left Winger": "W",
+    "Right Winger": "W",
+    "Second Striker": "AM",
+    "Centre-Forward": "ST",
+}
+
+
+def normalize_transfermarkt_position(sub_position: str) -> str:
+    try:
+        return TRANSFERMARKT_POSITION_GROUP_MAP[sub_position]
+    except KeyError as exc:
+        raise ValueError(
+            f"Poste Transfermarkt inconnu : {sub_position!r} — "
+            "ajoute-le à TRANSFERMARKT_POSITION_GROUP_MAP après vérification manuelle."
+        ) from exc

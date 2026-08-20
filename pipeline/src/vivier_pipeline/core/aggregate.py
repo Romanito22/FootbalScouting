@@ -8,20 +8,15 @@ Les gardiens sont exclus : jeu de métriques séparé, pas construit ici.
 from dataclasses import dataclass, field
 
 import pandas as pd
-from unidecode import unidecode
 
+from vivier_pipeline.core.identity import normalize_name
 from vivier_pipeline.core.metrics_registry import outfield_metric_keys
-from vivier_pipeline.core.positions import normalize_position
+from vivier_pipeline.core.positions import normalize_statsbomb_position
 
 # Cartes émises hors "Foul Committed" (ex. dissidence) sont sur "Bad Behaviour".
 YELLOW_CODES = {"Yellow Card", "Second Yellow"}
 RED_CODES = {"Red Card", "Second Yellow"}
 TACKLE_WON_OUTCOMES = {"Won", "Success In Play", "Success Out"}
-
-
-def normalize_name(full_name: str) -> str:
-    return unidecode(full_name).lower().strip()
-
 
 def _parse_clock(value: str) -> float:
     minutes, seconds = value.split(":")[:2]
@@ -292,7 +287,7 @@ def aggregate_competition(
         if nineties <= 0:
             continue
         info = identity.loc[raw_player_id]
-        position_group = normalize_position(info["position"])
+        position_group = normalize_statsbomb_position(info["position"])
         if position_group == "GK":
             continue
 
