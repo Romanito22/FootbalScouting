@@ -16,6 +16,8 @@
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test && pnpm test:pipeline",
     "test:pipeline": "cd pipeline && uv run pytest -q",
-    "pipeline:refresh": "cd pipeline && uv run python -m vivier_pipeline.jobs.refresh"
+    "pipeline:refresh": "cd pipeline && uv run python -m vivier_pipeline.jobs.refresh",
+    "pipeline:live": "cd pipeline && uv run python -m vivier_pipeline.jobs.live",
+    "pipeline:understat": "cd pipeline && uv run python -m vivier_pipeline.jobs.ingest_understat"
   }
 }

@@ -15,6 +15,8 @@ export const footEnum = pgEnum('foot', ['left', 'right', 'both']);
 
 export const sourceEnum = pgEnum('source', [
   'statsbomb', 'transfermarkt', 'fbref', 'manual',
+  'understat', // saison en cours des 5 grands championnats (phase 11)
+  'pipeline',  // recalculs dérivés (force, percentiles, vecteurs), journalisés comme les ingestions
 ]);
 
 export const shortlistStatusEnum = pgEnum('shortlist_status', [
@@ -282,6 +284,7 @@ export const ingestionRuns = pgTable('ingestion_runs', {
   startedAt: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
   finishedAt: timestamp('finished_at', { withTimezone: true }),
   rowsWritten: integer('rows_written'),
+  /** 'running' dès le début (visible en direct dans l'app), puis 'success' ou 'failed'. */
   status: text('status').notNull().default('running'),
   error: text('error'),
 }, (t) => [

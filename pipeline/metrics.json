@@ -217,6 +217,28 @@
       ]
     },
     {
+      "key": "xg_chain",
+      "label": "xGChain",
+      "family": "creation",
+      "per90": true,
+      "higherIsBetter": true,
+      "format": "dec2",
+      "appliesTo": [
+        "DC",
+        "FB",
+        "DM",
+        "CM",
+        "AM",
+        "W",
+        "ST"
+      ],
+      "leagueAdjusted": true,
+      "sources": [
+        "understat"
+      ],
+      "note": "Source Understat : xG total des possessions auxquelles le joueur participe (tir et passe clé compris)."
+    },
+    {
       "key": "xa",
       "label": "xA",
       "family": "creation",
@@ -335,6 +357,28 @@
         "pass_type"
       ],
       "note": "Passe réussie en jeu ouvert partant de hors de la surface adverse et y arrivant."
+    },
+    {
+      "key": "xg_buildup",
+      "label": "xGBuildup",
+      "family": "progression",
+      "per90": true,
+      "higherIsBetter": true,
+      "format": "dec2",
+      "appliesTo": [
+        "DC",
+        "FB",
+        "DM",
+        "CM",
+        "AM",
+        "W",
+        "ST"
+      ],
+      "leagueAdjusted": true,
+      "sources": [
+        "understat"
+      ],
+      "note": "Source Understat : xG des possessions auxquelles le joueur participe, hors tirs et passes clés — sa part dans la construction."
     },
     {
       "key": "passes_completed",

@@ -50,6 +50,19 @@ def is_international(competition_id: int, season_id: int) -> bool:
     return bool(match.iloc[0]["competition_international"])
 
 
+def describe(competition_id: int, season_id: int) -> str:
+    """« Ligue 1 2015/2016 », pour un journal lisible (repli : les identifiants)."""
+    competitions = fetch_competitions()
+    match = competitions[
+        (competitions["competition_id"] == competition_id)
+        & (competitions["season_id"] == season_id)
+    ]
+    if match.empty:
+        return f"{competition_id}/{season_id}"
+    row = match.iloc[0]
+    return f"{row['competition_name']} {row['season_name']}"
+
+
 def fetch_matches(competition_id: int, season_id: int) -> pd.DataFrame:
     path = _cache_path("matches", f"{competition_id}_{season_id}")
     return _load_or_fetch(

@@ -242,17 +242,3 @@ def replace_percentiles(conn: psycopg.Connection, groups: list[PeerGroupResult])
             rows_written += len(group.percentiles)
 
     return rows_written
-
-
-def log_ingestion_run(
-    conn: psycopg.Connection, source: str, scope: str, status: str,
-    rows_written: int | None = None, error: str | None = None,
-) -> None:
-    conn.execute(
-        """
-        INSERT INTO ingestion_runs
-            (source, scope, started_at, finished_at, rows_written, status, error)
-        VALUES (%s, %s, now(), now(), %s, %s, %s)
-        """,
-        (source, scope, rows_written, status, error),
-    )

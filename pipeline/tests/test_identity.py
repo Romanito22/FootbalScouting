@@ -11,6 +11,7 @@ from datetime import date
 from vivier_pipeline.core.identity import (
     IdentityCandidate,
     IdentityQuery,
+    normalize_club,
     normalize_name,
     resolve_identity,
 )
@@ -121,3 +122,48 @@ def test_candidates_are_ranked_best_first() -> None:
     result = resolve_identity(query, [MESSI, MBAPPE])
     assert result.candidates[0].player_id == 1
     assert result.candidates[0].score >= result.candidates[1].score
+
+
+DANILO_PEREIRA = IdentityCandidate(
+    player_id=10, normalized_name=normalize_name("Danilo Luís Hélio Pereira"),
+    clubs=["paris saint-germain"],
+)
+DANILO_BARBOSA = IdentityCandidate(
+    player_id=11, normalized_name=normalize_name("Danilo Barbosa da Silva"),
+    clubs=["botafogo"],
+)
+
+
+def test_two_candidates_tied_at_the_top_go_to_review() -> None:
+    """« Danilo » est contenu dans les deux noms (token_set_ratio 1.0 pour
+    les deux) : fusionner avec l'un plutôt que l'autre serait un pile ou face."""
+    result = resolve_identity(IdentityQuery(raw_name="Danilo"), [DANILO_PEREIRA, DANILO_BARBOSA])
+    assert result.outcome == "needs_review"
+    assert {c.player_id for c in result.candidates[:2]} == {10, 11}
+
+
+def test_mononym_with_conflicting_club_is_not_auto_merged() -> None:
+    """Understat : « Danilo » à la Juventus face au seul Danilo connu, au PSG."""
+    query = IdentityQuery(raw_name="Danilo", clubs=["juventus"])
+    result = resolve_identity(query, [DANILO_PEREIRA])
+    assert result.outcome == "needs_review"
+
+
+def test_mononym_with_matching_club_auto_resolves() -> None:
+    query = IdentityQuery(raw_name="Danilo", clubs=["paris saint germain"])
+    result = resolve_identity(query, [DANILO_PEREIRA])
+    assert result.outcome == "auto_resolved"
+    assert result.player_id == 10
+
+
+def test_multi_word_name_is_not_affected_by_club_mismatch() -> None:
+    """Le garde-fou ne vise que les noms d'un seul mot : un nom complet
+    exact reste fusionné même après un transfert."""
+    query = IdentityQuery(raw_name="Danilo Luís Hélio Pereira", clubs=["al ittihad"])
+    assert resolve_identity(query, [DANILO_PEREIRA]).outcome == "auto_resolved"
+
+
+def test_club_names_are_compared_without_punctuation_or_legal_affixes() -> None:
+    assert normalize_club("Paris Saint-Germain FC") == "paris saint germain"
+    assert normalize_club("Olympique de Marseille") == "olympique marseille"
+    assert normalize_club("A.C. Milan") == "a c milan"

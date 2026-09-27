@@ -14,10 +14,16 @@ from vivier_pipeline.core.metrics_registry import (
     load_registry,
     outfield_metric_keys,
 )
+from vivier_pipeline.core.runs import tracked_run
 from vivier_pipeline.core.vectors import compute_vectors
 
 
 def run() -> None:
+    with tracked_run("pipeline", "vecteurs") as tracked:
+        tracked.rows_written = _compute()
+
+
+def _compute() -> int:
     registry = load_registry()
     min_minutes = registry["minMinutes"]
     direction = {m["key"]: m["higherIsBetter"] for m in registry["metrics"]}
@@ -38,6 +44,7 @@ def run() -> None:
         rows_written = replace_vectors(conn, results)
         conn.commit()
         print(f"OK — {rows_written} vecteur(s) écrit(s) dans player_vectors")
+        return rows_written
 
 
 if __name__ == "__main__":

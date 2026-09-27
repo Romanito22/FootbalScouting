@@ -8,6 +8,8 @@ config({ path: resolve(process.cwd(), '../../.env') });
 
 const nextConfig: NextConfig = {
   transpilePackages: ['@vivier/db', '@vivier/metrics'],
+  // le coin bas-gauche est occupé par l'indicateur « en direct »
+  devIndicators: { position: 'bottom-right' },
 };
 
 export default nextConfig;

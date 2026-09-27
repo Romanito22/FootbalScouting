@@ -17,10 +17,16 @@ from vivier_pipeline.core.load_strength import (
     write_strength,
 )
 from vivier_pipeline.core.metrics_registry import league_adjusted_keys, load_registry
+from vivier_pipeline.core.runs import tracked_run
 from vivier_pipeline.core.strength import StrengthParams, estimate_strength
 
 
 def run(reference_competition_id: int | None = None) -> None:
+    with tracked_run("pipeline", "force des championnats") as tracked:
+        tracked.rows_written = _compute(reference_competition_id)
+
+
+def _compute(reference_competition_id: int | None) -> int:
     params = StrengthParams.from_registry(load_registry()["leagueStrength"])
 
     with get_conn() as conn:
@@ -47,6 +53,7 @@ def run(reference_competition_id: int | None = None) -> None:
                     f"[{r.low:.3f} – {r.high:.3f}]  {r.status} ({r.n_links} liaison(s))"
                 )
         print(f"OK — {estimated} coefficient(s) estimé(s)")
+        return estimated
 
 
 def main() -> None:

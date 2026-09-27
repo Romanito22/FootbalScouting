@@ -37,6 +37,7 @@ ci-dessous sont un point de départ raisonné, pas des valeurs calibrées
 empiriquement — à ajuster une fois la vraie file d'attente en main.
 """
 
+import re
 from dataclasses import dataclass
 from datetime import date
 from typing import Literal
@@ -47,6 +48,10 @@ from unidecode import unidecode
 AUTO_MATCH_THRESHOLD = 0.92
 REVIEW_THRESHOLD = 0.60
 NATIONALITY_MISMATCH_PENALTY = 0.5
+# Deux candidats à moins de cet écart du meilleur : ambigu, jamais fusionné seul.
+AMBIGUITY_MARGIN = 0.02
+# Deux noms de club normalisés « concordent » au-delà de ce score.
+CLUB_MATCH_THRESHOLD = 0.85
 
 Outcome = Literal["auto_resolved", "needs_review", "new"]
 
@@ -63,6 +68,8 @@ class IdentityCandidate:
     normalized_name: str
     birth_date: date | None = None
     nationality: list[str] | None = None
+    # clubs (noms normalisés) où le joueur a déjà des stats, club actuel compris
+    clubs: list[str] | None = None
 
 
 @dataclass
@@ -72,6 +79,8 @@ class IdentityQuery:
     raw_name: str
     birth_date: date | None = None
     nationality: list[str] | None = None
+    # club(s) de l'enregistrement source (noms normalisés), s'il est connu
+    clubs: list[str] | None = None
 
     @property
     def normalized_name(self) -> str:
@@ -92,6 +101,24 @@ class ResolutionResult:
     candidates: list[ScoredCandidate]  # toujours renseigné, utile pour la file d'attente
 
 
+_CLUB_AFFIXES = {"fc", "afc", "cf", "sc", "ac", "as", "ss", "us", "club", "de", "the", "calcio"}
+
+
+def normalize_club(name: str) -> str:
+    """« Paris Saint-Germain FC » -> « paris saint germain » : sans accents,
+    ponctuation ni affixes juridiques, pour comparer des libellés de club
+    qui varient d'une source à l'autre."""
+    tokens = re.sub(r"[^a-z0-9]+", " ", unidecode(name).lower()).split()
+    return " ".join(t for t in tokens if t not in _CLUB_AFFIXES)
+
+
+def _clubs_agree(query_clubs: list[str], candidate_clubs: list[str]) -> bool:
+    return any(
+        fuzz.token_set_ratio(normalize_club(q), normalize_club(c)) / 100 >= CLUB_MATCH_THRESHOLD
+        for q in query_clubs for c in candidate_clubs
+    )
+
+
 def _score(query: IdentityQuery, candidate: IdentityCandidate) -> float:
     if query.birth_date and candidate.birth_date and query.birth_date != candidate.birth_date:
         return 0.0
@@ -103,6 +130,18 @@ def _score(query: IdentityQuery, candidate: IdentityCandidate) -> float:
         and not set(query.nationality) & set(candidate.nationality)
     ):
         name_score *= NATIONALITY_MISMATCH_PENALTY
+
+    # Un nom d'un seul mot (« Danilo », « Rodri ») est contenu dans des
+    # dizaines de noms complets : token_set_ratio y vaut 1.0. Sans date de
+    # naissance, si les clubs sont connus des deux côtés et ne concordent
+    # jamais, ce n'est plus qu'une présomption — au mieux un arbitrage.
+    if (
+        len(query.normalized_name.split()) == 1
+        and not (query.birth_date and candidate.birth_date)
+        and query.clubs and candidate.clubs
+        and not _clubs_agree(query.clubs, candidate.clubs)
+    ):
+        name_score = min(name_score, REVIEW_THRESHOLD)
 
     return name_score
 
@@ -120,8 +159,10 @@ def resolve_identity(
     )
 
     best = scored[0].score if scored else 0.0
+    # Plusieurs candidats quasi ex aequo en tête : on ne choisit pas au hasard.
+    ambiguous = len(scored) > 1 and best - scored[1].score < AMBIGUITY_MARGIN
 
-    if best >= auto_threshold:
+    if best >= auto_threshold and not ambiguous:
         return ResolutionResult(
             outcome="auto_resolved", player_id=scored[0].player_id,
             confidence=scored[0].score, candidates=scored,

@@ -25,11 +25,18 @@ brut est mis en cache sous `pipeline/data/raw/` (jamais versionné) avant
 transformation : une ingestion rejouée ne re-télécharge rien.
 
 **1. StatsBomb Open Data** — gratuit, événements complets, source principale
-des métriques. Une compétition-saison par commande :
+des métriques. Une compétition-saison, un lot prédéfini, ou tout le catalogue :
 
 ```bash
 uv run python -m vivier_pipeline.jobs.ingest_statsbomb --competition-id 2 --season-id 27
+uv run python -m vivier_pipeline.jobs.ingest_statsbomb --preset big5-2015      # 5 grands championnats 2015/16, complets
+uv run python -m vivier_pipeline.jobs.ingest_statsbomb --preset internationaux # CdM, Euro, Copa, CAN
+uv run python -m vivier_pipeline.jobs.ingest_statsbomb --preset recents        # saisons récentes (une équipe suivie)
+uv run python -m vivier_pipeline.jobs.ingest_statsbomb --all                   # toutes les compétitions masculines (long)
 ```
+
+Un lot continue si une compétition échoue (coupure réseau…) et liste les
+échecs à la fin ; relancer la même commande reprend depuis le cache.
 
 Quelques couples utiles (liste complète : `data/raw/statsbomb/competitions.json`
 après une première ingestion) :
@@ -65,11 +72,47 @@ uv run python -m vivier_pipeline.jobs.ingest_fbref --leagues "ENG-Premier League
 FBref ne crée jamais de joueur : un nom non rapproché part en file d'arbitrage
 (`/admin/resolution-queue`), puis relancer l'ingestion.
 
-**4. Recalculer les tables dérivées** — après toute ingestion :
+> Réseau : Understat, FBref et Transfermarkt/Kaggle doivent être joignables
+> depuis la machine. Si un proxy ou une politique réseau les bloque,
+> l'ingestion échoue proprement (tâche `failed` visible dans l'app) et les
+> données existantes restent intactes.
+
+**4. Understat — la saison en cours** (via soccerdata, pause de 3 s entre
+requêtes imposée par VIVIER, soccerdata n'en met aucune par défaut) : xG, npxG,
+xA, tirs, passes clés, xGChain, xGBuildup des cinq grands championnats, mis à
+jour par la source après chaque journée.
+
+```bash
+pnpm pipeline:understat                                   # saison en cours, 5 championnats
+cd pipeline && uv run python -m vivier_pipeline.jobs.ingest_understat \
+    --leagues "FRA-Ligue 1" --seasons 2425 2526           # saisons passées au choix
+```
+
+Understat donne un identifiant de joueur stable : les joueurs déjà connus
+sont rapprochés (nom, date de naissance, club), les inconnus créés avec le
+poste le plus joué dans leurs feuilles de match. Nom ambigu, club
+contradictoire ou poste introuvable → file d'arbitrage, jamais de devinette.
+
+**5. Recalculer les tables dérivées** — après toute ingestion :
 
 ```bash
 pnpm pipeline:refresh    # force des championnats → percentiles → vecteurs
 ```
+
+## Temps réel
+
+```bash
+pnpm pipeline:live                      # Understat + recalcul complet, toutes les 6 h
+cd pipeline && uv run python -m vivier_pipeline.jobs.live --interval-hours 12
+cd pipeline && uv run python -m vivier_pipeline.jobs.live --once   # un cycle (cron)
+```
+
+Chaque ingestion et chaque recalcul s'inscrit dans `ingestion_runs` dès son
+démarrage (`running`), puis `success` / `failed`. L'app suit cette table en
+direct (flux SSE `/api/live`, lecture de la base uniquement) : l'indicateur
+en bas de la barre latérale montre la tâche en cours, l'âge des données et le
+dernier échec ; quand un cycle se termine, la page ouverte se recharge seule
+avec les nouveaux chiffres.
 
 ## Écrans
 
@@ -85,7 +128,7 @@ pnpm pipeline:refresh    # force des championnats → percentiles → vecteurs
 | `/players/[id]/report` | rapport de scouting imprimable / PDF |
 | `/competitions` | coefficients de force des championnats et leurs intervalles |
 | `/admin/resolution-queue` | arbitrage des identités ambiguës entre sources |
-| `/health` | santé système (Postgres, pgvector, volumes) |
+| `/health` | santé système (Postgres, pgvector, volumes) et historique des ingestions |
 
 ## Modèles et règles
 

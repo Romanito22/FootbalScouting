@@ -9,19 +9,19 @@ Usage :
 import argparse
 
 from vivier_pipeline.config import get_conn
-from vivier_pipeline.core.load import log_ingestion_run
 from vivier_pipeline.core.load_fbref import upsert_fbref_season_stats
 from vivier_pipeline.core.resolve import fetch_identity_candidates
+from vivier_pipeline.core.runs import tracked_run
 from vivier_pipeline.providers import fbref
 
 
 def run(leagues: list[str], seasons: list[str]) -> None:
     scope = f"fbref|{','.join(leagues)}|{','.join(seasons)}"
-    df = fbref.fetch_player_season_stats(leagues, seasons)
-    print(f"{len(df)} ligne(s) — {scope}")
+    with tracked_run("fbref", scope) as tracked:
+        df = fbref.fetch_player_season_stats(leagues, seasons)
+        print(f"{len(df)} ligne(s) — {scope}")
 
-    with get_conn() as conn:
-        try:
+        with get_conn() as conn:
             candidates = fetch_identity_candidates(conn)
 
             resolved = queued = skipped = 0
@@ -35,19 +35,13 @@ def run(leagues: list[str], seasons: list[str]) -> None:
                     queued += 1
                 else:
                     resolved += 1
-
-            print(
-                f"{resolved} ligne(s) écrite(s), {queued} en file d'attente, "
-                f"{skipped} ignorée(s) (0 min)"
-            )
-
-            log_ingestion_run(conn, "fbref", scope, "success", rows_written=resolved)
             conn.commit()
-        except Exception as exc:
-            conn.rollback()
-            log_ingestion_run(conn, "fbref", scope, "failed", error=str(exc))
-            conn.commit()
-            raise
+
+        tracked.rows_written = resolved
+        print(
+            f"{resolved} ligne(s) écrite(s), {queued} en file d'attente, "
+            f"{skipped} ignorée(s) (0 min)"
+        )
 
 
 def main() -> None:

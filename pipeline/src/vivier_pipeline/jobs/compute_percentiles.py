@@ -11,9 +11,15 @@ from vivier_pipeline.core.load import fetch_percentile_input, replace_percentile
 from vivier_pipeline.core.load_strength import fetch_league_strengths
 from vivier_pipeline.core.metrics_registry import load_registry
 from vivier_pipeline.core.percentiles import compute_adjusted_groups, compute_peer_groups
+from vivier_pipeline.core.runs import tracked_run
 
 
 def run() -> None:
+    with tracked_run("pipeline", "percentiles") as tracked:
+        tracked.rows_written = _compute()
+
+
+def _compute() -> int:
     registry = load_registry()
     min_minutes = registry["minMinutes"]
     season_span = registry["peerGroupSeasonSpan"]
@@ -40,6 +46,7 @@ def run() -> None:
         rows_written = replace_percentiles(conn, groups)
         conn.commit()
         print(f"OK — {rows_written} ligne(s) écrite(s) dans player_percentiles")
+        return rows_written
 
 
 if __name__ == "__main__":

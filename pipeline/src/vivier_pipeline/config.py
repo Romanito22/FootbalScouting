@@ -9,5 +9,5 @@ load_dotenv(Path(__file__).resolve().parents[3] / ".env")
 DATABASE_URL = os.environ["DATABASE_URL"]
 
 
-def get_conn() -> psycopg.Connection:
-    return psycopg.connect(DATABASE_URL)
+def get_conn(autocommit: bool = False) -> psycopg.Connection:
+    return psycopg.connect(DATABASE_URL, autocommit=autocommit)

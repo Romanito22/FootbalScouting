@@ -19,6 +19,7 @@ class MetricDef(TypedDict):
     format: str
     appliesTo: list[str]
     leagueAdjusted: NotRequired[bool]
+    sources: NotRequired[list[str]]
 
 
 class LeagueStrengthParams(TypedDict):
@@ -45,6 +46,18 @@ def load_registry() -> MetricsRegistry:
 
 def outfield_metric_keys() -> set[str]:
     return {m["key"] for m in load_registry()["metrics"] if "GK" not in m["appliesTo"]}
+
+
+def statsbomb_metric_keys(position_set: str) -> set[str]:
+    """Métriques qu'une agrégation StatsBomb doit produire, exactement :
+    `sources` absent (= calculée depuis les événements StatsBomb) ou
+    contenant 'statsbomb'. `position_set` : 'outfield' ou 'gk'."""
+    keys = outfield_metric_keys() if position_set == "outfield" else gk_metric_keys()
+    by_key = {m["key"]: m for m in load_registry()["metrics"]}
+    return {
+        k for k in keys
+        if "sources" not in by_key[k] or "statsbomb" in by_key[k]["sources"]
+    }
 
 
 def gk_metric_keys() -> set[str]:

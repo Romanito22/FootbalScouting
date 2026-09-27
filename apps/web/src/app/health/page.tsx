@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
-import { Card, PageHeader, StatTile } from '@/components/ui';
+import { Card, Chip, PageHeader, StatTile } from '@/components/ui';
+import { describeScope, SOURCE_LABELS } from '@/lib/scope';
 import {
   clubs, competitions, db, ingestionRuns, peerGroups, playerAliases,
   playerPercentiles, players, playerSeasonStats, playerVectors,
@@ -22,6 +23,23 @@ const TABLES = [
   { name: 'ingestion_runs', table: ingestionRuns },
 ] as const;
 
+const RUN_HISTORY = 20;
+
+const STATUS_CHIPS: Record<string, { tone: 'accent' | 'neutral' | 'negative'; label: string }> = {
+  running: { tone: 'accent', label: 'en cours' },
+  success: { tone: 'neutral', label: 'réussi' },
+  failed: { tone: 'negative', label: 'échec' },
+};
+const statusChip = (status: string) => STATUS_CHIPS[status] ?? { tone: 'neutral' as const, label: status };
+
+function duration(startedAt: Date, finishedAt: Date | null): string {
+  if (!finishedAt) return '—';
+  const seconds = Math.round((finishedAt.getTime() - startedAt.getTime()) / 1000);
+  if (seconds < 1) return '< 1 s';
+  if (seconds < 90) return `${seconds} s`;
+  return `${Math.round(seconds / 60)} min`;
+}
+
 async function getHealth() {
   try {
     const nowRows = await db.execute<{ now: string }>(sql`SELECT now()::text AS now`);
@@ -40,18 +58,18 @@ async function getHealth() {
       }),
     );
 
-    const lastRunRows = await db
+    const runs = await db
       .select()
       .from(ingestionRuns)
-      .orderBy(sql`${ingestionRuns.startedAt} DESC`)
-      .limit(1);
+      .orderBy(sql`${ingestionRuns.startedAt} DESC, ${ingestionRuns.id} DESC`)
+      .limit(RUN_HISTORY);
 
     return {
       ok: true as const,
       serverTime,
       vectorVersion: vectorRows[0]?.extversion ?? null,
       counts,
-      lastRun: lastRunRows[0] ?? null,
+      runs,
     };
   } catch (err) {
     return {
@@ -73,7 +91,11 @@ export default async function HealthPage() {
       <div className="mb-6 grid gap-3 sm:grid-cols-3">
         <StatTile label="Postgres" value={health.ok ? 'connecté' : 'hors ligne'} hint={health.ok ? health.serverTime ?? undefined : undefined} tone={health.ok ? 'default' : 'accent'} />
         <StatTile label="Extension vector" value={health.ok ? health.vectorVersion ?? 'absente' : '—'} />
-        <StatTile label="Dernière ingestion" value={health.ok && health.lastRun ? health.lastRun.status : '—'} hint={health.ok && health.lastRun ? new Date(health.lastRun.startedAt).toLocaleString('fr-FR') : undefined} />
+        <StatTile
+          label="Dernière tâche"
+          value={health.ok && health.runs[0] ? statusChip(health.runs[0].status).label : '—'}
+          hint={health.ok && health.runs[0] ? new Date(health.runs[0].startedAt).toLocaleString('fr-FR') : undefined}
+        />
       </div>
 
       {!health.ok ? (
@@ -95,25 +117,30 @@ export default async function HealthPage() {
               </tbody>
             </table>
           </Card>
-          <Card title="Dernière ingestion">
-            {health.lastRun ? (
-              <dl className="space-y-2 text-sm">
-                {Object.entries({
-                  Source: health.lastRun.source,
-                  Périmètre: health.lastRun.scope,
-                  Statut: health.lastRun.status,
-                  Lignes: String(health.lastRun.rowsWritten ?? '—'),
-                  Début: new Date(health.lastRun.startedAt).toLocaleString('fr-FR'),
-                  Fin: health.lastRun.finishedAt ? new Date(health.lastRun.finishedAt).toLocaleString('fr-FR') : '—',
-                  Erreur: health.lastRun.error ?? '—',
-                }).map(([k, v]) => (
-                  <div key={k} className="flex justify-between gap-4 border-b border-line/60 pb-1.5">
-                    <dt className="text-paper/50">{k}</dt>
-                    <dd className="text-right font-mono text-xs text-paper/85">{v}</dd>
-                  </div>
-                ))}
-              </dl>
-            ) : <p className="text-sm text-paper/50">Aucune ingestion.</p>}
+          <Card title={`Ingestions et recalculs · ${RUN_HISTORY} dernières tâches`} padded={false}>
+            {health.runs.length === 0 ? (
+              <p className="px-5 py-4 text-sm text-paper/50">Aucune tâche enregistrée.</p>
+            ) : (
+              <table className="w-full text-sm">
+                <tbody className="num">
+                  {health.runs.map((run) => (
+                    <tr key={run.id} className="border-b border-line/60 align-top">
+                      <td className="px-5 py-1.5">
+                        <div className="text-paper/85">{SOURCE_LABELS[run.source] ?? run.source} · {describeScope(run.source, run.scope)}</div>
+                        <div className="text-xs text-paper/40">
+                          {new Date(run.startedAt).toLocaleString('fr-FR')} · {duration(run.startedAt, run.finishedAt)}
+                        </div>
+                        {run.error && <div className="mt-0.5 line-clamp-2 font-mono text-xs text-[#e08a80]" title={run.error}>{run.error}</div>}
+                      </td>
+                      <td className="py-1.5 text-right font-mono text-xs text-paper/70">{run.rowsWritten?.toLocaleString('fr-FR') ?? '—'}</td>
+                      <td className="px-5 py-1.5 text-right">
+                        <Chip tone={statusChip(run.status).tone}>{statusChip(run.status).label}</Chip>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </Card>
         </div>
       )}

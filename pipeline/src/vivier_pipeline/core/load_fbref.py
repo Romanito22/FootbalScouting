@@ -11,31 +11,8 @@ import psycopg
 from unidecode import unidecode
 
 from vivier_pipeline.core.identity import IdentityCandidate, IdentityQuery
+from vivier_pipeline.core.leagues import league_info
 from vivier_pipeline.core.resolve import resolve_or_queue
-
-# Championnats connus : (nom, pays, palier). Nom et pays alignés sur les
-# libellés StatsBomb pour qu'une même compétition ne soit jamais dédoublée
-# entre sources (les groupes de pairs et les coefficients de force se
-# calculent par compétition). Un championnat absent d'ici fait échouer
-# l'ingestion plutôt que de deviner son niveau — ça fausserait les groupes
-# de pairs.
-FBREF_LEAGUES: dict[str, tuple[str, str, int]] = {
-    "ENG-Premier League": ("Premier League", "England", 1),
-    "ESP-La Liga": ("La Liga", "Spain", 1),
-    "GER-Bundesliga": ("1. Bundesliga", "Germany", 1),
-    "ITA-Serie A": ("Serie A", "Italy", 1),
-    "FRA-Ligue 1": ("Ligue 1", "France", 1),
-}
-
-
-def league_info(league: str) -> tuple[str, str, int]:
-    try:
-        return FBREF_LEAGUES[league]
-    except KeyError as exc:
-        raise ValueError(
-            f"Championnat inconnu : {league!r} — ajoute-le à FBREF_LEAGUES (nom, pays, "
-            "palier) après vérification manuelle."
-        ) from exc
 
 
 def league_tier(league: str) -> int:

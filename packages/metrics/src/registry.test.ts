@@ -41,6 +41,13 @@ describe('registre des métriques', () => {
     }
   });
 
+  it('déclare explicitement la source des métriques hors StatsBomb', () => {
+    for (const m of METRICS.filter((d) => d.sources)) {
+      expect(m.sources?.length, m.key).toBeGreaterThan(0);
+    }
+    expect(getMetric('xg_chain')?.sources).toEqual(['understat']);
+  });
+
   it('formate les taux en pourcentage et jamais en per-90', () => {
     for (const m of METRICS.filter((d) => d.format === 'pct')) {
       expect(m.per90, m.key).toBe(false);

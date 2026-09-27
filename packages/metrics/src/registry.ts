@@ -38,6 +38,13 @@ export interface MetricDef {
    * défensive (qui dépend surtout de la possession adverse).
    */
   leagueAdjusted?: boolean;
+  /**
+   * Sources qui fournissent la métrique. Absent : calculée depuis les
+   * événements StatsBomb (source de référence), et donc exigée de toute
+   * agrégation StatsBomb. Une métrique propre à une autre source ne doit
+   * jamais faire échouer l'agrégation StatsBomb, ni y être inventée.
+   */
+  sources?: readonly ('statsbomb' | 'fbref' | 'understat')[];
 }
 
 const OUTFIELD = [...OUTFIELD_POSITION_GROUPS];
@@ -111,6 +118,13 @@ export const METRICS: readonly MetricDef[] = [
     derivedFrom: ['pass_goal_assist'],
   },
   {
+    key: 'xg_chain', label: 'xGChain', family: 'creation', per90: true,
+    higherIsBetter: true, format: 'dec2', appliesTo: OUTFIELD,
+    leagueAdjusted: true,
+    sources: ['understat'],
+    note: 'Source Understat : xG total des possessions auxquelles le joueur participe (tir et passe clé compris).',
+  },
+  {
     key: 'xa', label: 'xA', family: 'creation', per90: true,
     higherIsBetter: true, format: 'dec2', appliesTo: OUTFIELD,
     leagueAdjusted: true,
@@ -145,6 +159,14 @@ export const METRICS: readonly MetricDef[] = [
     leagueAdjusted: true,
     derivedFrom: ['location', 'pass_end_location', 'pass_outcome', 'pass_type'],
     note: 'Passe réussie en jeu ouvert partant de hors de la surface adverse et y arrivant.',
+  },
+
+  {
+    key: 'xg_buildup', label: 'xGBuildup', family: 'progression', per90: true,
+    higherIsBetter: true, format: 'dec2', appliesTo: OUTFIELD,
+    leagueAdjusted: true,
+    sources: ['understat'],
+    note: 'Source Understat : xG des possessions auxquelles le joueur participe, hors tirs et passes clés — sa part dans la construction.',
   },
 
   // ---- possession ----

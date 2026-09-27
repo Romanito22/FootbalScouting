@@ -16,10 +16,23 @@ def fetch_identity_candidates(conn: psycopg.Connection) -> list[IdentityCandidat
     résolution reste largement assez rapide ; un pré-filtre indexé (nom de
     famille, nationalité) sera à envisager si le volume grossit beaucoup."""
     rows = conn.execute(
-        "SELECT id, normalized_name, birth_date, nationality FROM players",
+        """
+        SELECT p.id, p.normalized_name, p.birth_date, p.nationality,
+               array_remove(
+                   array_agg(DISTINCT c.name) || array_agg(DISTINCT cc.name), NULL
+               ) AS clubs
+        FROM players p
+        LEFT JOIN player_season_stats s ON s.player_id = p.id
+        LEFT JOIN clubs c ON c.id = s.club_id
+        LEFT JOIN clubs cc ON cc.id = p.current_club_id
+        GROUP BY p.id
+        """,
     ).fetchall()
     return [
-        IdentityCandidate(player_id=r[0], normalized_name=r[1], birth_date=r[2], nationality=r[3])
+        IdentityCandidate(
+            player_id=r[0], normalized_name=r[1], birth_date=r[2], nationality=r[3],
+            clubs=list(r[4]) or None,
+        )
         for r in rows
     ]
 

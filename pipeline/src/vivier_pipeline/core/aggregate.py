@@ -18,7 +18,7 @@ import numpy as np
 import pandas as pd
 
 from vivier_pipeline.core.identity import normalize_name
-from vivier_pipeline.core.metrics_registry import gk_metric_keys, outfield_metric_keys
+from vivier_pipeline.core.metrics_registry import statsbomb_metric_keys
 from vivier_pipeline.core.positions import normalize_statsbomb_position
 from vivier_pipeline.core.seasons import canonical_season
 
@@ -410,7 +410,10 @@ def aggregate_competition(
     """`is_international` (competitions.json de StatsBomb) : sélections
     nationales (Coupe du monde, Euro...) ou clubs (championnats, Ligue des
     champions...). Détermine `clubs.is_national_team` et le pays du club."""
-    expected_keys = {"outfield": outfield_metric_keys(), "gk": gk_metric_keys()}
+    expected_keys = {
+        "outfield": statsbomb_metric_keys("outfield"),
+        "gk": statsbomb_metric_keys("gk"),
+    }
 
     first = matches.iloc[0]
     result = CompetitionAggregation(competition={
