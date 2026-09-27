@@ -1,8 +1,11 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { eq, sql } from 'drizzle-orm';
-import { db, players, shortlistEntries, shortlists } from '@vivier/db';
+import { db, players, scoutNotes, shortlistEntries, shortlists } from '@vivier/db';
 import { POSITION_GROUP_LABELS } from '@vivier/metrics';
+import { ContractBadge } from '@/components/ContractBadge';
+import { MAX_COMPARED } from '@/lib/compare';
+import { ageOn, formatMarketValue } from '@/lib/contract';
 import { deleteShortlist, moveEntry, removeEntry, updateEntryStatus } from '../actions';
 
 const STATUS_LABELS: Record<string, string> = {
@@ -26,6 +29,14 @@ export default async function ShortlistDetailPage({ params }: { params: Promise<
       fullName: players.fullName,
       positionGroup: players.positionGroup,
       status: shortlistEntries.status,
+      birthDate: players.birthDate,
+      contractUntil: players.contractUntil,
+      marketValueEur: players.marketValueEur,
+      latestRating: sql<number | null>`(
+        SELECT ${scoutNotes.rating} FROM ${scoutNotes}
+        WHERE ${scoutNotes.playerId} = ${players.id} AND ${scoutNotes.rating} IS NOT NULL
+        ORDER BY ${scoutNotes.createdAt} DESC LIMIT 1
+      )`,
     })
     .from(shortlistEntries)
     .innerJoin(players, eq(players.id, shortlistEntries.playerId))
@@ -46,6 +57,17 @@ export default async function ShortlistDetailPage({ params }: { params: Promise<
           </button>
         </form>
       </div>
+
+      {entries.length > 1 && (
+        <form id="compare-form" action="/compare" method="get" className="mb-4 flex items-center gap-3">
+          <button type="submit" className="border border-spotlight px-3 py-1 text-xs text-spotlight hover:bg-spotlight/10">
+            Comparer la sélection
+          </button>
+          <span className="font-mono text-xs text-paper/40">
+            coche jusqu'à {MAX_COMPARED} joueurs (au-delà, seuls les {MAX_COMPARED} premiers sont gardés)
+          </span>
+        </form>
+      )}
 
       {entries.length === 0 && (
         <p className="text-paper/60">
@@ -71,12 +93,27 @@ export default async function ShortlistDetailPage({ params }: { params: Promise<
               </form>
             </div>
 
-            <Link href={`/players/${entry.playerId}`} className="flex-1 text-paper hover:text-spotlight">
-              {entry.fullName}
+            <input
+              type="checkbox" name="ids" value={entry.playerId} form="compare-form"
+              aria-label={`Comparer ${entry.fullName}`}
+              defaultChecked={entry.status === 'prioritaire'}
+            />
+
+            <div className="flex-1">
+              <Link href={`/players/${entry.playerId}`} className="text-paper hover:text-spotlight">
+                {entry.fullName}
+              </Link>
               <span className="ml-2 font-mono text-xs text-paper/50">
-                {POSITION_GROUP_LABELS[entry.positionGroup as keyof typeof POSITION_GROUP_LABELS]}
+                {POSITION_GROUP_LABELS[entry.positionGroup]} · {ageOn(entry.birthDate) !== null ? `${ageOn(entry.birthDate)} ans` : 'âge inconnu'}
               </span>
-            </Link>
+              <div className="mt-0.5 flex flex-wrap items-center gap-2">
+                <ContractBadge contractUntil={entry.contractUntil} />
+                <span className="font-mono text-xs text-paper/50">{formatMarketValue(entry.marketValueEur)}</span>
+                <span className="font-mono text-xs text-paper/50">
+                  {entry.latestRating !== null ? `dernière note ${entry.latestRating}/10` : 'pas encore noté'}
+                </span>
+              </div>
+            </div>
 
             <form action={updateEntryStatus} className="flex items-center gap-2">
               <input type="hidden" name="shortlistId" value={shortlistId} />

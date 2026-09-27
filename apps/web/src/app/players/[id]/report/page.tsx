@@ -67,7 +67,9 @@ export default async function PlayerReportPage({ params }: { params: Promise<{ i
 
   const vector = await latestVector(playerId);
   const comparables = vector?.styleVec
-    ? await topSimilar(playerVectors.styleVec, vector.styleVec, playerId, 5, player.positionGroup === 'GK')
+    ? await topSimilar(playerVectors.styleVec, vector.styleVec, playerId, 5, {
+      targetIsGoalkeeper: player.positionGroup === 'GK',
+    })
     : [];
 
   const notes = await db

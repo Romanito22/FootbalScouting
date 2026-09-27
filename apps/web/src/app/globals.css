@@ -9,6 +9,13 @@
   --color-spotlight: #c9a227; /* accent, alertes contrat */
   --color-signal: #b04a3f;   /* négatif */
 
+  /* Séries de la comparaison (3 joueurs max). Validées (scripts dataviz) sur
+     fond ink, tous couples confondus : ΔE CVD ≥ 13 — jaune proche du
+     spotlight en tête pour garder l'identité du radar individuel. */
+  --color-series-1: #c98500;
+  --color-series-2: #3987e5;
+  --color-series-3: #d55181;
+
   --font-display: var(--font-display), "Arial Narrow", sans-serif;
   --font-sans: var(--font-text), system-ui, sans-serif;
   --font-mono: var(--font-mono), ui-monospace, "SF Mono", Menlo, monospace;
@@ -27,6 +34,12 @@ body {
     --color-ink: #ffffff;
     --color-surface: #f2efe8;
     --color-paper: #17181a;
+    /* mêmes teintes, pas de clarté du mode clair (validées sur blanc ;
+       contraste < 3:1 pour le jaune et le magenta : légende et table
+       de valeurs obligatoires, toujours présentes sur /compare) */
+    --color-series-1: #eda100;
+    --color-series-2: #2a78d6;
+    --color-series-3: #e87ba4;
   }
 }
 

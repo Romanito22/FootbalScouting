@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { Archivo_Narrow, IBM_Plex_Mono, Inter_Tight } from 'next/font/google';
+import { Nav } from '@/components/Nav';
 import './globals.css';
 
 const archivoCondensed = Archivo_Narrow({
@@ -28,7 +29,10 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="fr" className={`${archivoCondensed.variable} ${interTight.variable} ${ibmPlexMono.variable}`}>
-      <body>{children}</body>
+      <body>
+        <Nav />
+        {children}
+      </body>
     </html>
   );
 }

@@ -77,6 +77,9 @@ export default async function PlayerPage({ params }: { params: Promise<{ id: str
             <Link href={`/players/${player.id}/report`} className="font-mono text-xs text-paper/50 underline hover:text-spotlight">
               rapport →
             </Link>
+            <Link href={`/compare?ids=${player.id}`} className="font-mono text-xs text-paper/50 underline hover:text-spotlight">
+              comparer →
+            </Link>
           </div>
           {allShortlists.length > 0 && (
             <form action={addPlayerToShortlist} className="flex items-center gap-2">

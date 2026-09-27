@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, inArray, lte, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, lte, type SQL, sql } from 'drizzle-orm';
 import {
   clubs, competitions, db, peerGroups, playerPercentiles, players, playerSeasonStats,
 } from '@vivier/db';
@@ -26,6 +26,14 @@ export interface SearchResultRow {
   competitionName: string;
   contractUntil: string | null;
   marketValueEur: number | null;
+  birthDate: string | null;
+  nationality: string[] | null;
+  tier: number;
+  /** Percentile de la métrique filtrée (référentiel choisi), si une métrique l'est. */
+  metricPercentile: number | null;
+  /** Date d'ingestion de la ligne : sert à repérer les nouveaux résultats
+   * d'une recherche sauvegardée depuis sa dernière consultation. */
+  ingestedAt: Date;
 }
 
 const RESULT_LIMIT = 200;
@@ -74,6 +82,30 @@ export async function runSearch(filters: SearchFilters): Promise<{
     )`);
   }
 
+  // Percentile de la métrique choisie, dans le groupe propre à la ligne et
+  // au référentiel choisi (palier ou ajusté) : sert au tri.
+  const metricPercentile = filters.metric
+    ? sql<number | null>`(
+      SELECT ${playerPercentiles.percentile} FROM ${playerPercentiles}
+      INNER JOIN ${peerGroups} ON ${peerGroups.id} = ${playerPercentiles.peerGroupId}
+      WHERE ${playerPercentiles.playerId} = ${playerSeasonStats.playerId}
+        AND ${playerPercentiles.season} = ${playerSeasonStats.season}
+        AND ${peerGroups.season} = ${playerSeasonStats.season}
+        AND ${peerGroups.kind} = ${filters.percentileScope}
+        AND ${playerPercentiles.competitionId} = ${playerSeasonStats.competitionId}
+        AND ${playerPercentiles.clubId} = ${playerSeasonStats.clubId}
+        AND ${playerPercentiles.metric} = ${filters.metric}
+    )`
+    : sql<number | null>`NULL::smallint`;
+
+  const order: SQL[] = {
+    minutes: [desc(playerSeasonStats.minutes)],
+    percentile: [sql`${metricPercentile} DESC NULLS LAST`, desc(playerSeasonStats.minutes)],
+    age: [sql`${players.birthDate} DESC NULLS LAST`, desc(playerSeasonStats.minutes)],
+    contract: [sql`${players.contractUntil} ASC NULLS LAST`, desc(playerSeasonStats.minutes)],
+    value: [sql`${players.marketValueEur} ASC NULLS LAST`, desc(playerSeasonStats.minutes)],
+  }[filters.sort];
+
   const rows = await db
     .select({
       playerId: players.id,
@@ -87,13 +119,18 @@ export async function runSearch(filters: SearchFilters): Promise<{
       competitionName: competitions.name,
       contractUntil: players.contractUntil,
       marketValueEur: players.marketValueEur,
+      birthDate: players.birthDate,
+      nationality: players.nationality,
+      tier: competitions.tier,
+      ingestedAt: playerSeasonStats.ingestedAt,
+      metricPercentile,
     })
     .from(playerSeasonStats)
     .innerJoin(players, eq(players.id, playerSeasonStats.playerId))
     .innerJoin(competitions, eq(competitions.id, playerSeasonStats.competitionId))
     .innerJoin(clubs, eq(clubs.id, playerSeasonStats.clubId))
     .where(conditions.length ? and(...conditions) : undefined)
-    .orderBy(desc(playerSeasonStats.minutes))
+    .orderBy(...order)
     .limit(RESULT_LIMIT);
 
   const percentilesByRow = await fetchRowPercentiles(

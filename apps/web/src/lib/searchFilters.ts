@@ -14,7 +14,17 @@ export interface SearchFilters {
   /** Référentiel du seuil de percentile : groupe de palier, ou toutes
    * compétitions ajusté de la force du championnat (phase 7). */
   percentileScope: 'tier' | 'adjusted';
+  sort: SearchSort;
 }
+
+export const SEARCH_SORTS = {
+  minutes: 'Minutes jouées',
+  percentile: 'Percentile de la métrique',
+  age: 'Âge (plus jeune d\'abord)',
+  contract: 'Fin de contrat (plus proche d\'abord)',
+  value: 'Valeur marchande (plus basse d\'abord)',
+} as const;
+export type SearchSort = keyof typeof SEARCH_SORTS;
 
 export const EMPTY_FILTERS: SearchFilters = {
   positions: [],
@@ -28,6 +38,7 @@ export const EMPTY_FILTERS: SearchFilters = {
   metric: null,
   percentileMin: null,
   percentileScope: 'tier',
+  sort: 'minutes',
 };
 
 type RawSearchParams = Record<string, string | string[] | undefined>;
@@ -52,6 +63,7 @@ export function parseSearchFilters(searchParams: RawSearchParams): SearchFilters
   );
   const foot = first(searchParams.foot);
   const scope = first(searchParams.percentileScope);
+  const sort = first(searchParams.sort);
 
   return {
     positions,
@@ -65,6 +77,7 @@ export function parseSearchFilters(searchParams: RawSearchParams): SearchFilters
     metric: first(searchParams.metric) || null,
     percentileMin: toInt(first(searchParams.percentileMin)),
     percentileScope: scope === 'adjusted' ? 'adjusted' : 'tier',
+    sort: sort && sort in SEARCH_SORTS ? (sort as SearchSort) : 'minutes',
   };
 }
 
@@ -81,5 +94,6 @@ export function filtersToSearchParams(filters: SearchFilters): URLSearchParams {
   if (filters.metric) params.set('metric', filters.metric);
   if (filters.percentileMin !== null) params.set('percentileMin', String(filters.percentileMin));
   if (filters.percentileScope !== 'tier') params.set('percentileScope', filters.percentileScope);
+  if (filters.sort !== 'minutes') params.set('sort', filters.sort);
   return params;
 }

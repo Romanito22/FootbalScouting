@@ -111,7 +111,12 @@ def upsert_fbref_season_stats(
             -- catalogue, les métriques d'une autre source restent en place
             metrics = player_season_stats.metrics || EXCLUDED.metrics,
             source = 'fbref',
-            ingested_at = now()
+            ingested_at = CASE
+                WHEN player_season_stats.minutes IS DISTINCT FROM EXCLUDED.minutes
+                  OR player_season_stats.metrics IS DISTINCT FROM
+                     player_season_stats.metrics || EXCLUDED.metrics
+                THEN now() ELSE player_season_stats.ingested_at
+            END
         """,
         {
             "player_id": resolution.player_id,

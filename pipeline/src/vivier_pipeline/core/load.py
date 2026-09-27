@@ -133,7 +133,14 @@ def upsert_season_stats(
             minutes = EXCLUDED.minutes,
             matches_played = EXCLUDED.matches_played,
             metrics = EXCLUDED.metrics,
-            ingested_at = now()
+            -- « nouveau » seulement si la ligne a réellement changé : rejouer
+            -- une ingestion depuis le cache ne doit pas faire passer toute la
+            -- base pour nouvelle dans les recherches sauvegardées
+            ingested_at = CASE
+                WHEN player_season_stats.minutes IS DISTINCT FROM EXCLUDED.minutes
+                  OR player_season_stats.metrics IS DISTINCT FROM EXCLUDED.metrics
+                THEN now() ELSE player_season_stats.ingested_at
+            END
         """,
         {
             "player_id": player_id,

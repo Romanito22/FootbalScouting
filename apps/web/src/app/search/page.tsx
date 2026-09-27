@@ -2,7 +2,11 @@ import Link from 'next/link';
 import { METRICS, MIN_MINUTES, POSITION_GROUP_LABELS, POSITION_GROUPS } from '@vivier/metrics';
 import { PercentileRadar } from '@/components/PercentileRadar';
 import { parseSearchFilters } from '@/lib/searchFilters';
+import { ContractBadge } from '@/components/ContractBadge';
+import { MAX_COMPARED } from '@/lib/compare';
+import { ageOn, formatMarketValue } from '@/lib/contract';
 import { statRowKey } from '@/lib/percentiles';
+import { SEARCH_SORTS } from '@/lib/searchFilters';
 import { runSearch } from '@/lib/searchQuery';
 import { SaveSearchForm } from './SaveSearchForm';
 
@@ -16,7 +20,7 @@ export default async function SearchPage({
   const { rows, radarByRow } = await runSearch(filters);
 
   return (
-    <main className="mx-auto max-w-5xl px-6 py-10">
+    <main className="mx-auto max-w-7xl px-6 py-10">
       <div className="mb-6 flex items-baseline justify-between">
         <h1 className="font-display text-2xl font-bold tracking-tight text-paper">Recherche</h1>
         <Link href="/search/saved" className="font-mono text-xs text-paper/50 underline hover:text-spotlight">
@@ -99,6 +103,15 @@ export default async function SearchPage({
           <input type="number" name="percentileMin" min={0} max={100} defaultValue={filters.percentileMin ?? ''} className="mt-1 w-full border border-paper/30 bg-ink px-2 py-1 text-sm text-paper" />
         </label>
 
+        <label className="text-xs text-paper/50">
+          Trier par
+          <select name="sort" defaultValue={filters.sort} className="mt-1 w-full border border-paper/30 bg-ink px-2 py-1 text-sm text-paper">
+            {Object.entries(SEARCH_SORTS).map(([value, label]) => (
+              <option key={value} value={value}>{label}</option>
+            ))}
+          </select>
+        </label>
+
         <div className="col-span-2 flex items-end justify-between gap-4 sm:col-span-4">
           <button type="submit" className="border border-spotlight px-4 py-1.5 text-sm text-spotlight hover:bg-spotlight/10">
             Filtrer
@@ -111,50 +124,80 @@ export default async function SearchPage({
         </div>
       </form>
 
-      <div className="mb-4 flex items-center justify-between">
-        <p className="font-mono text-xs text-paper/50">{rows.length} résultat(s)</p>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <p className="font-mono text-xs text-paper/50">
+          {rows.length} résultat(s){rows.length === 200 ? ' (limite atteinte — affine les filtres)' : ''}
+        </p>
+        <form id="compare-form" action="/compare" method="get">
+          <button type="submit" className="border border-spotlight px-3 py-1 text-xs text-spotlight hover:bg-spotlight/10">
+            Comparer la sélection (≤ {MAX_COMPARED})
+          </button>
+        </form>
         <SaveSearchForm filters={filters} />
       </div>
 
       <table className="w-full border-collapse text-sm">
         <thead>
           <tr className="border-b border-paper/20 text-left text-paper/50">
-            <th className="py-1.5 font-normal">Nom</th>
-            <th className="py-1.5 font-normal">Poste</th>
-            <th className="py-1.5 font-normal">Équipe</th>
-            <th className="py-1.5 font-normal">Saison</th>
-            <th className="py-1.5 text-right font-normal">Minutes</th>
-            <th className="py-1.5 font-normal"></th>
+            <th className="py-1.5 pr-3 font-normal"><span className="sr-only">Comparer</span></th>
+            <th className="py-1.5 pr-3 font-normal">Nom</th>
+            <th className="py-1.5 pr-3 font-normal">Poste</th>
+            <th className="py-1.5 pr-3 text-right font-normal">Âge</th>
+            <th className="py-1.5 pr-3 font-normal">Saison</th>
+            <th className="py-1.5 pr-3 text-right font-normal">Min.</th>
+            {filters.metric && <th className="py-1.5 pr-3 text-right font-normal">Pct.</th>}
+            <th className="py-1.5 pr-3 font-normal">Contrat</th>
+            <th className="py-1.5 pr-3 text-right font-normal">Valeur</th>
+            <th className="py-1.5 pl-3 font-normal">Profil</th>
           </tr>
         </thead>
         <tbody className="font-mono">
-          {rows.map((row) => (
-            <tr key={statRowKey(row)} className="border-b border-paper/10 hover:bg-surface">
-              <td className="py-1.5 font-sans">
-                <Link href={`/players/${row.playerId}`} className="hover:text-spotlight">
-                  {row.fullName}
-                </Link>
-              </td>
-              <td className="py-1.5">{POSITION_GROUP_LABELS[row.positionGroup]}</td>
-              <td className="py-1.5 font-sans">{row.clubName}</td>
-              <td className="py-1.5">{row.season}</td>
-              <td className="py-1.5 text-right">{row.minutes}</td>
-              <td className="py-1">
-                {(() => {
-                  const radar = radarByRow.get(statRowKey(row));
-                  if (!radar || radar.metrics.length < 3) return null;
-                  return (
+          {rows.map((row) => {
+            const radar = radarByRow.get(statRowKey(row));
+            return (
+              <tr key={statRowKey(row)} className="border-b border-paper/10 hover:bg-surface">
+                <td className="py-1.5 pr-2">
+                  <input type="checkbox" name="ids" value={row.playerId} form="compare-form" aria-label={`Comparer ${row.fullName}`} />
+                </td>
+                <td className="py-1.5 font-sans">
+                  <Link href={`/players/${row.playerId}`} className="text-paper hover:text-spotlight">
+                    {row.fullName}
+                  </Link>
+                  {row.nationality && row.nationality.length > 0 && (
+                    <span className="ml-1 text-xs text-paper/40">{row.nationality.join(', ')}</span>
+                  )}
+                </td>
+                <td className="py-1.5 pr-3 font-sans text-paper/70">{POSITION_GROUP_LABELS[row.positionGroup]}</td>
+                <td className="py-1.5 pr-3 text-right">{ageOn(row.birthDate) ?? '—'}</td>
+                <td className="py-1.5 pr-3 font-sans text-paper/70">
+                  <span className="whitespace-nowrap">{row.competitionName} · {row.season}</span>
+                  <span className="block text-xs text-paper/40">{row.clubName} · niveau {row.tier}</span>
+                </td>
+                <td className="py-1.5 pr-3 text-right">{row.minutes}</td>
+                {filters.metric && (
+                  <td className="py-1.5 pr-3 text-right text-spotlight">
+                    {row.metricPercentile !== null ? `${row.metricPercentile}ᵉ` : '—'}
+                  </td>
+                )}
+                <td className="py-1.5 pr-3"><ContractBadge contractUntil={row.contractUntil} /></td>
+                <td className="whitespace-nowrap py-1.5 pr-3 text-right">{formatMarketValue(row.marketValueEur)}</td>
+                <td className="py-1 pl-3">
+                  {radar && radar.metrics.length >= 3 ? (
                     <div className="flex items-center gap-2" title={`Percentiles vs ${radar.peerGroupLabel} (${radar.peerGroupSampleSize} joueurs)`}>
                       <PercentileRadar metrics={radar.metrics} compact />
-                      <span className="max-w-40 font-sans text-[10px] leading-tight text-paper/40">
+                      <span className="max-w-36 font-sans text-[10px] leading-tight text-paper/40">
                         vs {radar.peerGroupLabel} · n={radar.peerGroupSampleSize}
                       </span>
                     </div>
-                  );
-                })()}
-              </td>
-            </tr>
-          ))}
+                  ) : (
+                    <span className="font-sans text-[10px] text-paper/30">
+                      {row.minutes < MIN_MINUTES ? `< ${MIN_MINUTES} min` : 'non calculé'}
+                    </span>
+                  )}
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </main>
