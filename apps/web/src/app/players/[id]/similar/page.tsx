@@ -2,8 +2,10 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { eq } from 'drizzle-orm';
 import { db, players, playerVectors } from '@vivier/db';
+import { Sparkles } from 'lucide-react';
 import { MIN_MINUTES, POSITION_GROUP_LABELS } from '@vivier/metrics';
 import { ContractBadge } from '@/components/ContractBadge';
+import { btnPrimary, Card, EmptyState, field, label, Monogram, PageHeader } from '@/components/ui';
 import { ageOn, formatMarketValue } from '@/lib/contract';
 import { latestVector, type SimilarConstraints, type SimilarRow, topSimilar } from '@/lib/similarity';
 
@@ -51,74 +53,48 @@ export default async function SimilarPlayersPage({
   const target = await latestVector(playerId);
 
   return (
-    <main className="mx-auto max-w-5xl px-6 py-10">
-      <div className="mb-6">
-        <p className="font-mono text-xs text-paper/50">
-          <Link href={`/players/${playerId}`} className="hover:text-spotlight">← {player.fullName}</Link>
-        </p>
-        <h1 className="font-display text-2xl font-bold tracking-tight text-paper">
-          Joueurs similaires
-        </h1>
-        <p className="mt-1 text-sm text-paper/60">
-          Qui pour le remplacer ? Même profil de jeu (style), même niveau (ajusté du championnat),
-          sous tes contraintes de recrutement.
-        </p>
-      </div>
+    <main className="mx-auto max-w-7xl px-6 py-8 lg:px-10">
+      <PageHeader
+        eyebrow={<Link href={`/players/${playerId}`} className="hover:text-spotlight">← {player.fullName}</Link>}
+        title="Qui pour le remplacer ?"
+        description="Même profil de jeu (style) ou même niveau (ajusté du championnat), sous tes contraintes de recrutement."
+      />
 
-      <form method="get" className="mb-8 flex flex-wrap items-end gap-4 border-b border-paper/15 pb-6">
+      <form method="get" className="mb-6 flex flex-wrap items-end gap-4 rounded-xl border border-line bg-surface p-4">
         <input type="hidden" name="submitted" value="1" />
-        <label className="flex items-center gap-2 text-sm text-paper">
+        <label className="flex items-center gap-2 self-center text-sm text-paper">
           <input type="checkbox" name="samePosition" value="1" defaultChecked={samePosition} />
           Même poste ({POSITION_GROUP_LABELS[player.positionGroup]})
         </label>
-        <label className="text-xs text-paper/50">
-          Âge max
-          <input type="number" name="ageMax" defaultValue={constraints.ageMax ?? ''} className="mt-1 block w-24 border border-paper/30 bg-ink px-2 py-1 text-sm text-paper" />
-        </label>
-        <label className="text-xs text-paper/50">
-          Valeur max (€)
-          <input type="number" name="marketValueMax" defaultValue={constraints.marketValueMax ?? ''} className="mt-1 block w-36 border border-paper/30 bg-ink px-2 py-1 text-sm text-paper" />
-        </label>
-        <label className="text-xs text-paper/50">
-          Fin de contrat avant
-          <input type="date" name="contractBefore" defaultValue={constraints.contractBefore ?? ''} className="mt-1 block border border-paper/30 bg-ink px-2 py-1 text-sm text-paper" />
-        </label>
-        <button type="submit" className="border border-spotlight px-4 py-1.5 text-sm text-spotlight hover:bg-spotlight/10">
-          Appliquer
-        </button>
+        <label className={`${label} w-28`}>Âge max<input type="number" name="ageMax" defaultValue={constraints.ageMax ?? ''} className={`${field} mt-1`} /></label>
+        <label className={`${label} w-40`}>Valeur max (€)<input type="number" name="marketValueMax" defaultValue={constraints.marketValueMax ?? ''} className={`${field} mt-1`} /></label>
+        <label className={`${label} w-44`}>Fin de contrat avant<input type="date" name="contractBefore" defaultValue={constraints.contractBefore ?? ''} className={`${field} mt-1`} /></label>
+        <button type="submit" className={btnPrimary}>Appliquer</button>
+        {hasConstraints && (
+          <p className="basis-full text-xs text-paper/45">Âge, valeur et contrat ne filtrent que les joueurs pour qui la donnée est connue (import Transfermarkt).</p>
+        )}
       </form>
 
       {!target || !target.styleVec || !target.qualityVec ? (
-        <p className="text-paper/60">
-          Pas de vecteur calculé pour ce joueur — moins de {MIN_MINUTES} minutes jouées, ou le
-          job compute_vectors n'a pas encore tourné.
-        </p>
+        <EmptyState icon={<Sparkles size={28} />} title="Pas de vecteur pour ce joueur">
+          Moins de {MIN_MINUTES} minutes jouées, ou pnpm pipeline:refresh n'a pas encore tourné.
+        </EmptyState>
       ) : (
         <>
-          <p className="mb-2 font-mono text-xs text-paper/50">
-            Référence : saison {target.season} (la plus récente avec vecteur) · modèle {target.modelVersion}
+          <p className="mb-4 text-xs text-paper/45">
+            Référence : saison {target.season} (la plus récente avec vecteur) · modèle {target.modelVersion} ·
+            similarité cosinus : 100 % = même proportion de jeu (style) ou même profil de percentiles (niveau) —
+            une distance, pas une estimation statistique ; fiable si les groupes de pairs sont fournis.
           </p>
-          {hasConstraints && (
-            <p className="mb-2 font-mono text-xs text-paper/50">
-              Contraintes : âge, valeur et contrat ne filtrent que les joueurs pour qui la donnée est
-              connue (import Transfermarkt).
-            </p>
-          )}
-          <p className="mb-8 max-w-3xl text-xs text-paper/50">
-            Similarité cosinus : 100 % = même proportion de jeu (style) ou même profil de percentiles
-            (niveau). Ce n'est pas une estimation statistique mais une distance ; elle n'est fiable que
-            si les groupes de pairs sont bien fournis.
-          </p>
-
-          <div className="grid grid-cols-1 gap-10 md:grid-cols-2">
+          <div className="grid gap-6 lg:grid-cols-2">
             <SimilarList
-              title="Similaires en style"
-              subtitle="joue comme lui"
+              title="Même style"
+              subtitle="joue comme lui : mêmes proportions dans son jeu"
               rows={await topSimilar(playerVectors.styleVec, target.styleVec, playerId, RESULT_LIMIT, constraints)}
               compareWith={playerId}
             />
             <SimilarList
-              title="Similaires en niveau"
+              title="Même niveau"
               subtitle="aussi bon que lui, ajusté du championnat"
               rows={await topSimilar(playerVectors.qualityVec, target.qualityVec, playerId, RESULT_LIMIT, constraints)}
               compareWith={playerId}
@@ -139,33 +115,32 @@ function SimilarList({
   compareWith: number;
 }) {
   return (
-    <section>
-      <h2 className="font-display text-lg font-bold text-paper">{title}</h2>
-      <p className="mb-3 font-mono text-xs text-paper/50">{subtitle}</p>
-      <ol className="space-y-2">
-        {rows.map((row, i) => (
-          <li key={row.playerId} className="border-b border-paper/10 pb-2 text-sm">
-            <div className="flex items-baseline justify-between">
-              <span className="font-mono text-paper/40">{i + 1}.</span>
-              <Link href={`/players/${row.playerId}`} className="flex-1 px-2 font-sans text-paper hover:text-spotlight">
-                {row.fullName}
-                <span className="ml-2 font-mono text-xs text-paper/40">{row.season}</span>
-              </Link>
-              <span className="font-mono text-xs text-spotlight">{(row.similarity * 100).toFixed(0)} %</span>
-            </div>
-            <div className="mt-1 flex flex-wrap items-center gap-2 pl-6 font-mono text-xs text-paper/50">
-              <span>{POSITION_GROUP_LABELS[row.positionGroup]}</span>
-              <span>{ageOn(row.birthDate) !== null ? `${ageOn(row.birthDate)} ans` : 'âge inconnu'}</span>
-              <span>{formatMarketValue(row.marketValueEur)}</span>
-              <ContractBadge contractUntil={row.contractUntil} />
-              <Link href={`/compare?ids=${compareWith},${row.playerId}`} className="ml-auto underline hover:text-spotlight">
-                comparer
-              </Link>
-            </div>
-          </li>
-        ))}
-        {rows.length === 0 && <p className="text-sm text-paper/50">Aucun joueur ne respecte ces contraintes.</p>}
-      </ol>
-    </section>
+    <Card title={title} subtitle={subtitle} padded={false}>
+      {rows.length === 0 ? (
+        <p className="p-5 text-sm text-paper/50">Aucun joueur ne respecte ces contraintes.</p>
+      ) : (
+        <ol className="divide-y divide-line">
+          {rows.map((row, i) => (
+            <li key={row.playerId} className="flex items-center gap-3 px-5 py-3">
+              <span className="w-5 font-mono text-xs text-paper/35">{i + 1}</span>
+              <Monogram name={row.fullName} size="sm" />
+              <div className="min-w-0 flex-1">
+                <Link href={`/players/${row.playerId}`} className="block truncate font-medium text-paper hover:text-spotlight">{row.fullName}</Link>
+                <div className="flex flex-wrap items-center gap-1.5 text-xs text-paper/50">
+                  <span>{POSITION_GROUP_LABELS[row.positionGroup]} · {row.season}</span>
+                  {ageOn(row.birthDate) !== null && <span>· {ageOn(row.birthDate)} ans</span>}
+                  {row.marketValueEur !== null && <span>· {formatMarketValue(row.marketValueEur)}</span>}
+                  {row.contractUntil && <ContractBadge contractUntil={row.contractUntil} />}
+                </div>
+              </div>
+              <div className="num w-14 text-right text-sm font-semibold text-paper" title="Similarité cosinus">
+                {(row.similarity * 100).toFixed(0)} %
+              </div>
+              <Link href={`/compare?ids=${compareWith},${row.playerId}`} className="text-xs text-paper/45 underline hover:text-spotlight">comparer</Link>
+            </li>
+          ))}
+        </ol>
+      )}
+    </Card>
   );
 }

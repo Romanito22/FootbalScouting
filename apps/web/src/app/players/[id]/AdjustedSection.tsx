@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { type MetricDef, METRICS, PEER_GROUP_SEASON_SPAN } from '@vivier/metrics';
-import { IntervalBar } from '@/components/IntervalBar';
+import { PercentileBars, PercentileScale } from '@/components/charts/PercentileBars';
+import { Chip } from '@/components/ui';
 import { formatMetricValue } from '@/lib/format';
 import { describePeerGroup, type RowPercentiles } from '@/lib/percentiles';
 import {
@@ -8,9 +9,8 @@ import {
 } from '@/lib/strength';
 
 const ADJUSTED_METRICS: MetricDef[] = METRICS.filter((m) => m.leagueAdjusted);
-const PERCENTILE_SCALE = { kind: 'linear' as const, min: 0, max: 100 };
 
-/** Ligne « Force du championnat » d'une saison — estimation toujours avec son intervalle. */
+/** Force du championnat d'une saison — estimation toujours avec son intervalle. */
 export function LeagueStrengthLine({
   competition, referenceName,
 }: {
@@ -19,19 +19,20 @@ export function LeagueStrengthLine({
 }) {
   const withInterval = formatCoefWithInterval(competition);
   return (
-    <p className="mb-2 font-mono text-xs text-paper/60">
-      Force du championnat :{' '}
+    <div className="flex flex-wrap items-center gap-2 text-xs text-paper/60">
+      <span>Force du championnat</span>
       {competition.status === 'reference' ? (
-        <span className="text-paper">1.00 (référence)</span>
+        <Chip tone="neutral">1.00 · référence</Chip>
       ) : withInterval ? (
         <>
-          <span className="text-spotlight">{withInterval}</span> {CI_LABEL} · réf. {referenceName ?? '?'} = 1.00
+          <Chip tone="accent">{withInterval}</Chip>
+          <span className="text-paper/40">{CI_LABEL} · réf. {referenceName ?? '?'} = 1.00</span>
         </>
       ) : (
-        <span>{describeStrengthStatus(competition)}</span>
-      )}{' '}
-      <Link href="/competitions" className="underline hover:text-spotlight">détail</Link>
-    </p>
+        <Chip tone="muted">{describeStrengthStatus(competition)}</Chip>
+      )}
+      <Link href="/competitions" className="text-paper/40 underline hover:text-spotlight">détail</Link>
+    </div>
   );
 }
 
@@ -40,7 +41,7 @@ export function LeagueStrengthLine({
  * compétition, classée contre tous les joueurs du poste quel que soit leur
  * championnat. Chaque valeur et chaque percentile porte son intervalle de
  * confiance (incertitude sur la force des championnats, propagée par
- * bootstrap).
+ * bootstrap) — tracé en filet sur la barre, écrit en clair à côté.
  */
 export function AdjustedSection({
   group, competition, referenceName,
@@ -51,75 +52,70 @@ export function AdjustedSection({
 }) {
   if (competition.coef === null) {
     return (
-      <p className="mt-6 font-mono text-xs text-paper/50">
-        Niveau toutes compétitions indisponible : force de {competition.name} {describeStrengthStatus(competition)}.
+      <p className="text-sm text-paper/55">
+        Indisponible : la force de {competition.name} n'est pas estimée ({describeStrengthStatus(competition)}).
+        Le joueur reste comparé à son seul palier.
       </p>
     );
   }
   if (!group) {
-    return (
-      <p className="mt-6 font-mono text-xs text-paper/50">
-        Niveau toutes compétitions pas encore calculé pour cette ligne (lancer compute_percentiles).
-      </p>
-    );
+    return <p className="text-sm text-paper/55">Pas encore calculé pour cette ligne (lancer pnpm pipeline:refresh).</p>;
   }
 
   const rows = ADJUSTED_METRICS.flatMap((def) => {
     const pct = group.byMetric.get(def.key);
-    return pct ? [{ def, pct }] : [];
+    if (!pct) return [];
+    const low = pct.percentileLow ?? pct.percentile;
+    const high = pct.percentileHigh ?? pct.percentile;
+    const value = pct.adjustedValue !== null ? formatMetricValue(pct.adjustedValue, def.format) : '—';
+    const interval = pct.adjustedLow !== null && pct.adjustedHigh !== null && pct.adjustedLow !== pct.adjustedHigh
+      ? ` [${formatMetricValue(pct.adjustedLow, def.format)} – ${formatMetricValue(pct.adjustedHigh, def.format)}]`
+      : '';
+    return [{
+      key: def.key,
+      label: def.label,
+      value,
+      percentile: pct.percentile,
+      low,
+      high,
+      note: `Brut ${pct.rawValue !== null ? formatMetricValue(pct.rawValue, def.format) : '—'} → équivalent ${referenceName ?? 'référence'} ${value}${interval} · percentile ${pct.percentile}ᵉ [${low} – ${high}] ${CI_LABEL}, sur ${pct.sampleSize} joueurs`,
+    }];
   });
 
   return (
-    <div className="mt-6">
-      <h3 className="font-display text-base font-bold text-paper">Niveau ajusté — toutes compétitions</h3>
-      <p className="mb-3 font-mono text-xs text-paper/60">
-        vs {describePeerGroup(group, PEER_GROUP_SEASON_SPAN)} · valeurs exprimées en équivalent{' '}
-        {referenceName ?? 'référence'} · {CI_LABEL}
+    <div>
+      <p className="mb-4 text-xs text-paper/55">
+        vs {describePeerGroup(group, PEER_GROUP_SEASON_SPAN)} · valeurs en équivalent {referenceName ?? 'référence'} ·
+        barre d'erreur = {CI_LABEL} du percentile (détail chiffré ci-dessous)
       </p>
-      <table className="w-full border-collapse text-sm">
+      <PercentileBars rows={rows} />
+      <div className="mt-1"><PercentileScale /></div>
+      <table className="mt-5 w-full text-xs">
+        <caption className="mb-1 text-left text-paper/45">Détail chiffré</caption>
         <thead>
-          <tr className="border-b border-paper/20 text-left text-paper/50">
-            <th className="py-1.5 font-normal">Métrique</th>
-            <th className="py-1.5 text-right font-normal">Brut</th>
-            <th className="py-1.5 text-right font-normal">Équiv. réf. [IC]</th>
-            <th className="py-1.5 text-right font-normal">Percentile [IC]</th>
-            <th className="py-1.5 pl-4 font-normal"><span className="sr-only">Intervalle du percentile</span></th>
+          <tr className="border-b border-line text-left text-paper/45">
+            <th className="py-1 font-normal">Métrique</th>
+            <th className="py-1 text-right font-normal">Brut</th>
+            <th className="py-1 text-right font-normal">Équiv. réf. [IC]</th>
+            <th className="py-1 text-right font-normal">Percentile [IC]</th>
           </tr>
         </thead>
-        <tbody className="font-mono">
-          {rows.map(({ def, pct }) => {
-            const low = pct.percentileLow ?? pct.percentile;
-            const high = pct.percentileHigh ?? pct.percentile;
+        <tbody className="num font-mono">
+          {ADJUSTED_METRICS.map((def) => {
+            const pct = group.byMetric.get(def.key);
+            if (!pct) return null;
             return (
-              <tr key={def.key} className="border-b border-paper/10">
-                <td className="py-1 font-sans text-paper/80">{def.label}</td>
-                <td className="py-1 text-right text-paper/60">
-                  {pct.rawValue !== null ? formatMetricValue(pct.rawValue, def.format) : '—'}
-                </td>
-                <td className="py-1 text-right">
+              <tr key={def.key} className="border-b border-line/60">
+                <td className="py-1 font-sans text-paper/75">{def.label}</td>
+                <td className="py-1 text-right text-paper/55">{pct.rawValue !== null ? formatMetricValue(pct.rawValue, def.format) : '—'}</td>
+                <td className="py-1 text-right text-paper">
                   {pct.adjustedValue !== null ? formatMetricValue(pct.adjustedValue, def.format) : '—'}
-                  {pct.adjustedLow !== null && pct.adjustedHigh !== null
-                    && pct.adjustedLow !== pct.adjustedHigh && (
-                    <span className="ml-1 text-paper/40">
-                      [{formatMetricValue(pct.adjustedLow, def.format)} – {formatMetricValue(pct.adjustedHigh, def.format)}]
-                    </span>
+                  {pct.adjustedLow !== null && pct.adjustedHigh !== null && pct.adjustedLow !== pct.adjustedHigh && (
+                    <span className="ml-1 text-paper/40">[{formatMetricValue(pct.adjustedLow, def.format)} – {formatMetricValue(pct.adjustedHigh, def.format)}]</span>
                   )}
                 </td>
-                <td className="py-1 text-right">
-                  <span className="text-spotlight">{pct.percentile}ᵉ</span>
-                  <span className="ml-1 text-paper/40">[{low} – {high}]</span>
-                </td>
-                <td className="py-1 pl-4">
-                  <IntervalBar
-                    value={pct.percentile}
-                    low={low}
-                    high={high}
-                    scale={PERCENTILE_SCALE}
-                    reference={50}
-                    width={120}
-                    height={12}
-                    title={`${def.label} : ${pct.percentile}ᵉ percentile [${low} – ${high}] ${CI_LABEL}, sur ${pct.sampleSize} joueurs`}
-                  />
+                <td className="py-1 text-right text-paper">
+                  {pct.percentile}ᵉ <span className="text-paper/40">[{pct.percentileLow ?? pct.percentile} – {pct.percentileHigh ?? pct.percentile}]</span>
                 </td>
               </tr>
             );

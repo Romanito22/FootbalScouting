@@ -77,10 +77,11 @@ pnpm pipeline:refresh    # force des championnats → percentiles → vecteurs
 |---|---|
 | `/` Tableau de bord | contrats des joueurs suivis à échéance, nouveaux résultats des recherches sauvegardées, shortlists, dernières observations, fraîcheur des données |
 | `/search` | filtres composables (poste, âge, pied, contrat, valeur, niveau, seuil de percentile contre le palier ou toutes compétitions), tri, mini-radar par ligne, sauvegarde |
-| `/players`, `/players/[id]` | répertoire (recherche floue « mbape » → Mbappé), fiche : radar par poste, métriques par famille, force du championnat, niveau ajusté avec intervalles, notes |
+| `/players`, `/players/[id]` | répertoire (recherche floue « mbape » → Mbappé), fiche : une saison approfondie à la fois — radar et barres de percentile du poste, distribution du joueur dans son groupe de pairs, toutes les métriques par famille, niveau ajusté avec intervalles, évolution par saison, historique, notes |
+| `/leaderboards` | classements par poste, saison et métrique, contre le palier ou toutes compétitions (ajusté, avec intervalles) |
 | `/players/[id]/similar` | « qui pour le remplacer ? » — similaires en style et en niveau, sous contraintes (poste, âge, valeur, contrat) |
 | `/compare` | jusqu'à 3 finalistes : cartes, radar superposé, table, niveau ajusté ; saison commune au choix |
-| `/shortlists` | listes de travail, statuts, ordre, sélection → comparaison |
+| `/shortlists` | une liste par besoin, en colonnes par statut (prioritaire → écarté), sélection → comparaison |
 | `/players/[id]/report` | rapport de scouting imprimable / PDF |
 | `/competitions` | coefficients de force des championnats et leurs intervalles |
 | `/admin/resolution-queue` | arbitrage des identités ambiguës entre sources |

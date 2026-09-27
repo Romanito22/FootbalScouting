@@ -2,9 +2,11 @@
 
 @theme {
   /* Palette — dossier papier annoté / cadran d'instrument, pas jeu vidéo. */
-  --color-ink: #0f1419;      /* fond */
-  --color-surface: #1a2229;  /* surfaces */
-  --color-paper: #d9d4c7;    /* texte principal */
+  --color-ink: #0f1419;      /* fond de l'application */
+  --color-surface: #151c22;  /* cartes */
+  --color-raised: #1c252c;   /* survol, champs, lignes actives */
+  --color-line: #253038;     /* filets et bordures (un cran au-dessus des surfaces) */
+  --color-paper: #e0dbce;    /* texte principal */
   --color-pitch: #4a7c59;    /* positif */
   --color-spotlight: #c9a227; /* accent, alertes contrat */
   --color-signal: #b04a3f;   /* négatif */
@@ -16,15 +18,30 @@
   --color-series-2: #3987e5;
   --color-series-3: #d55181;
 
-  --font-display: var(--font-display), "Arial Narrow", sans-serif;
-  --font-sans: var(--font-text), system-ui, sans-serif;
-  --font-mono: var(--font-mono), ui-monospace, "SF Mono", Menlo, monospace;
+  --font-display: var(--ff-display), "Arial Narrow", sans-serif;
+  --font-sans: var(--ff-text), system-ui, sans-serif;
+  --font-mono: var(--ff-mono), ui-monospace, "SF Mono", Menlo, monospace;
 }
 
 body {
   background-color: var(--color-ink);
   color: var(--color-paper);
   font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+input[type='checkbox'],
+input[type='radio'] {
+  accent-color: var(--color-spotlight);
+}
+
+/* Colonnes de chiffres alignées ; jamais sur un chiffre isolé en grand. */
+.num {
+  font-variant-numeric: tabular-nums;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--color-spotlight) 35%, transparent);
 }
 
 /* Rapport de scouting exportable en PDF (spec §3.6) : fond papier plutôt
@@ -32,7 +49,9 @@ body {
 @media print {
   :root {
     --color-ink: #ffffff;
-    --color-surface: #f2efe8;
+    --color-surface: #ffffff;
+    --color-raised: #f2efe8;
+    --color-line: #d8d4ca;
     --color-paper: #17181a;
     /* mêmes teintes, pas de clarté du mode clair (validées sur blanc ;
        contraste < 3:1 pour le jaune et le magenta : légende et table
@@ -42,4 +61,3 @@ body {
     --color-series-3: #e87ba4;
   }
 }
-

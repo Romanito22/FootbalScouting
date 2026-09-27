@@ -1,12 +1,15 @@
 import { LEAGUE_STRENGTH } from '@vivier/metrics';
 import { IntervalAxis, IntervalBar, type IntervalScale } from '@/components/IntervalBar';
+import { Card, Chip, PageHeader } from '@/components/ui';
 import {
   CI_LABEL, describeStrengthStatus, fetchCompetitionStrengths, formatCoef,
   formatCoefWithInterval, referenceOf,
 } from '@/lib/strength';
 
 const TICK_CANDIDATES = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4];
-const BAR_WIDTH = 220;
+const BAR_WIDTH = 300;
+
+export const metadata = { title: 'Championnats' };
 
 export default async function CompetitionsPage() {
   const all = await fetchCompetitionStrengths();
@@ -30,126 +33,92 @@ export default async function CompetitionsPage() {
   const modelVersion = all.find((c) => c.modelVersion)?.modelVersion;
 
   return (
-    <main className="mx-auto max-w-5xl px-6 py-10">
-      <h1 className="font-display text-2xl font-bold tracking-tight text-paper">
-        Force des championnats
-      </h1>
-      <p className="mt-2 max-w-3xl text-sm text-paper/70">
-        Coefficient = ce que vaut une production dans ce championnat, rapportée à la
-        référence{reference ? <> (<span className="text-paper">{reference.name}</span> = 1.00)</> : null}.
-        {' '}À 1.25, 0.40 npxG/90 y valent 0.50 dans la référence. Estimé à partir des joueurs
-        observés dans deux compétitions à au plus {LEAGUE_STRENGTH.maxSeasonGap} saison
-        d'écart (≥ {LEAGUE_STRENGTH.minMinutes} min chacune), intervalle de confiance à{' '}
-        {Math.round(LEAGUE_STRENGTH.ciLevel * 100)} % par bootstrap sur les joueurs.
-      </p>
-      <p className="mt-2 max-w-3xl font-mono text-xs text-paper/50">
-        {computedAt
-          ? `modèle ${modelVersion ?? '?'} · calculé le ${new Date(computedAt).toLocaleString('fr-FR')}`
-          : 'jamais calculé — uv run python -m vivier_pipeline.jobs.compute_strength'}
-      </p>
+    <main className="mx-auto max-w-6xl px-6 py-8 lg:px-10">
+      <PageHeader
+        eyebrow="Explorer"
+        title="Force des championnats"
+        description={<>
+          Coefficient = ce que vaut une production dans ce championnat, rapportée à la référence
+          {reference ? <> (<span className="text-paper">{reference.name}</span> = 1.00)</> : null}. À 1.25,
+          0.40 npxG/90 y valent 0.50 dans la référence. Estimé sur les joueurs observés dans deux
+          compétitions à au plus {LEAGUE_STRENGTH.maxSeasonGap} saison d'écart (≥ {LEAGUE_STRENGTH.minMinutes} min
+          chacune) ; intervalle de confiance à {Math.round(LEAGUE_STRENGTH.ciLevel * 100)} % par bootstrap sur les joueurs.
+        </>}
+        actions={<Chip tone="muted">{computedAt ? `modèle ${modelVersion ?? '?'} · ${new Date(computedAt).toLocaleString('fr-FR')}` : 'jamais calculé'}</Chip>}
+      />
 
-      <table className="mt-8 w-full border-collapse text-sm">
-        <thead>
-          <tr className="border-b border-paper/20 text-left text-paper/50">
-            <th className="py-1.5 font-normal">Compétition</th>
-            <th className="py-1.5 font-normal">Palier</th>
-            <th className="py-1.5 text-right font-normal">Coefficient [{CI_LABEL}]</th>
-            <th className="py-1.5 pl-6 font-normal">
-              <span className="sr-only">Intervalle</span>
-            </th>
-            <th className="py-1.5 text-right font-normal">Liaisons</th>
-          </tr>
-        </thead>
-        <tbody className="font-mono">
-          {estimated.map((c) => {
-            const label = formatCoefWithInterval(c) ?? '';
-            return (
-              <tr key={c.id} className="border-b border-paper/10">
-                <td className="py-2 font-sans">
-                  <span className="text-paper">{c.name}</span>
-                  <span className="ml-2 text-xs text-paper/40">{c.country}</span>
-                  {c.status === 'reference' && (
-                    <span className="ml-2 border border-paper/30 px-1 text-[10px] uppercase tracking-wide text-paper/60">
-                      référence
-                    </span>
-                  )}
-                </td>
-                <td className="py-2">{c.tier}</td>
-                <td className="py-2 text-right">
-                  <span className="text-spotlight">{formatCoef(c.coef ?? 1)}</span>
-                  {c.status !== 'reference' && (
-                    <span className="ml-1 text-paper/50">
-                      [{formatCoef(c.low ?? 1)} – {formatCoef(c.high ?? 1)}]
-                    </span>
-                  )}
-                </td>
-                <td className="py-2 pl-6">
-                  <IntervalBar
-                    value={c.coef ?? 1}
-                    low={c.low ?? 1}
-                    high={c.high ?? 1}
-                    scale={scale}
-                    reference={1}
-                    width={BAR_WIDTH}
-                    title={`${c.name} : ${label} (${CI_LABEL})`}
-                  />
-                </td>
-                <td className="py-2 text-right text-paper/70">{c.links ?? 0}</td>
-              </tr>
-            );
-          })}
-          {estimated.length > 0 && (
-            <tr>
-              <td colSpan={3} />
-              <td className="pl-6 pt-1">
-                <IntervalAxis scale={scale} ticks={ticks} width={BAR_WIDTH} format={(t) => String(t)} />
-              </td>
-              <td />
-            </tr>
-          )}
-        </tbody>
-      </table>
-
-      {estimated.length === 0 && (
-        <p className="mt-6 text-sm text-paper/60">
-          Aucun coefficient estimé pour l'instant : il faut des joueurs observés dans plusieurs
-          compétitions (au moins {LEAGUE_STRENGTH.minLinkPlayers} par compétition).
-        </p>
-      )}
-
-      {others.length > 0 && (
-        <section className="mt-10">
-          <h2 className="mb-2 font-display text-lg font-bold text-paper">Non estimés</h2>
-          <p className="mb-3 max-w-3xl text-sm text-paper/60">
-            Pas de coefficient, donc pas de percentile « toutes compétitions » pour leurs joueurs :
-            ils restent comparés à leur seul palier. Jamais de 1.00 implicite.
+      <Card title="Coefficients estimés" subtitle={`point = estimation · trait = ${CI_LABEL} · pointillés = référence (1.00) · échelle logarithmique`} padded={false}>
+        {estimated.length === 0 ? (
+          <p className="p-5 text-sm text-paper/60">
+            Aucun coefficient estimé : il faut des joueurs observés dans plusieurs compétitions (au moins {LEAGUE_STRENGTH.minLinkPlayers} par compétition).
           </p>
-          <table className="w-full border-collapse text-sm">
-            <tbody className="font-mono">
-              {others.map((c) => (
-                <tr key={c.id} className="border-b border-paper/10">
-                  <td className="py-1.5 font-sans text-paper">
-                    {c.name}
-                    <span className="ml-2 text-xs text-paper/40">{c.country}</span>
-                  </td>
-                  <td className="whitespace-nowrap py-1.5 text-paper/60">palier {c.tier}</td>
-                  <td className="py-1.5 text-right text-xs text-paper/60">{describeStrengthStatus(c)}</td>
-                </tr>
-              ))}
+        ) : (
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-line text-left text-xs text-paper/50">
+                <th className="px-5 py-2 font-medium">Compétition</th>
+                <th className="px-3 py-2 font-medium">Palier</th>
+                <th className="px-3 py-2 text-right font-medium">Coefficient [{CI_LABEL}]</th>
+                <th className="px-3 py-2 font-medium"><span className="sr-only">Intervalle</span></th>
+                <th className="px-5 py-2 text-right font-medium">Liaisons</th>
+              </tr>
+            </thead>
+            <tbody className="num">
+              {estimated.map((c) => {
+                const text = formatCoefWithInterval(c) ?? '';
+                return (
+                  <tr key={c.id} className="border-b border-line/60">
+                    <td className="px-5 py-2.5">
+                      <span className="text-paper">{c.name}</span>
+                      <span className="ml-2 text-xs text-paper/40">{c.country}</span>
+                      {c.status === 'reference' && <span className="ml-2"><Chip>référence</Chip></span>}
+                    </td>
+                    <td className="px-3 py-2.5 text-paper/60">{c.tier}</td>
+                    <td className="px-3 py-2.5 text-right font-mono">
+                      <span className="font-semibold text-paper">{formatCoef(c.coef ?? 1)}</span>
+                      {c.status !== 'reference' && <span className="ml-1 text-paper/45">[{formatCoef(c.low ?? 1)} – {formatCoef(c.high ?? 1)}]</span>}
+                    </td>
+                    <td className="px-3 py-2.5">
+                      <IntervalBar value={c.coef ?? 1} low={c.low ?? 1} high={c.high ?? 1} scale={scale} reference={1} width={BAR_WIDTH} title={`${c.name} : ${text} (${CI_LABEL})`} />
+                    </td>
+                    <td className="px-5 py-2.5 text-right font-mono text-paper/60">{c.links ?? 0}</td>
+                  </tr>
+                );
+              })}
+              <tr>
+                <td colSpan={3} />
+                <td className="px-3 pb-3 pt-1"><IntervalAxis scale={scale} ticks={ticks} width={BAR_WIDTH} format={(t) => String(t)} /></td>
+                <td />
+              </tr>
             </tbody>
           </table>
-        </section>
+        )}
+      </Card>
+
+      {others.length > 0 && (
+        <Card title="Non estimés" subtitle="pas de coefficient, donc pas de percentile « toutes compétitions » : comparés à leur seul palier — jamais de 1.00 implicite" className="mt-6" padded={false}>
+          <ul className="divide-y divide-line">
+            {others.map((c) => (
+              <li key={c.id} className="flex flex-wrap items-center justify-between gap-2 px-5 py-2.5 text-sm">
+                <span>
+                  <span className="text-paper">{c.name}</span>
+                  <span className="ml-2 text-xs text-paper/40">{c.country} · palier {c.tier}</span>
+                </span>
+                <span className="text-xs text-paper/55">{describeStrengthStatus(c)}</span>
+              </li>
+            ))}
+          </ul>
+        </Card>
       )}
 
-      <section className="mt-10 max-w-3xl border-t border-paper/15 pt-4 text-xs text-paper/50">
-        <h2 className="mb-1 font-sans text-sm text-paper/70">Limites connues du modèle</h2>
-        <ul className="list-disc space-y-1 pl-4">
-          <li>Indice purement offensif (npxG, xA, tirs, passes clés, dribbles réussis…) : ne dit rien de l'exigence défensive d'un championnat.</li>
-          <li>Biais de sélection : un joueur qui monte d'un cran sort souvent d'une saison exceptionnelle, la régression vers la moyenne gonfle un peu l'écart estimé.</li>
+      <Card title="Limites connues du modèle" className="mt-6">
+        <ul className="list-disc space-y-1.5 pl-4 text-sm text-paper/60">
+          <li>Indice purement offensif (npxG, xA, tirs, passes clés, progression…) : ne dit rien de l'exigence défensive d'un championnat.</li>
+          <li>Biais de sélection : un joueur qui monte d'un cran sort souvent d'une saison exceptionnelle ; la régression vers la moyenne gonfle un peu l'écart estimé.</li>
           <li>Évolution du joueur entre deux saisons ignorée (écart limité à {LEAGUE_STRENGTH.maxSeasonGap} saison).</li>
-          <li>Référence choisie automatiquement (la compétition la plus reliée aux autres), modifiable avec <code>compute_strength --reference-competition-id</code>.</li>
+          <li>Référence choisie automatiquement (la compétition la plus reliée), modifiable : <code className="text-paper/80">compute_strength --reference-competition-id</code>.</li>
         </ul>
-      </section>
+      </Card>
     </main>
   );
 }

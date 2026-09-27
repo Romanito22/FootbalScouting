@@ -76,8 +76,18 @@ export async function moveEntry(formData: FormData) {
   // prochain tri (NULLS LAST les renverrait en fin de liste).
   const ordered = entries.map((e, i) => ({ ...e, rank: e.rank ?? i }));
   const index = ordered.findIndex((e) => e.playerId === playerId);
-  const swapWith = direction === 'up' ? index - 1 : index + 1;
-  if (index < 0 || swapWith < 0 || swapWith >= ordered.length) return;
+  if (index < 0) return;
+  // Vue en colonnes par statut : on échange avec le voisin DE LA MÊME
+  // colonne, pas avec le voisin global (qui peut être dans une autre).
+  const status = ordered[index]!.status;
+  const sameStatus = ordered
+    .map((e, i) => ({ e, i }))
+    .filter(({ e }) => e.status === status)
+    .map(({ i }) => i);
+  const position = sameStatus.indexOf(index);
+  const neighbour = direction === 'up' ? sameStatus[position - 1] : sameStatus[position + 1];
+  if (neighbour === undefined) return;
+  const swapWith = neighbour;
 
   const rankSelf = ordered[index]!.rank;
   const rankOther = ordered[swapWith]!.rank;

@@ -37,10 +37,10 @@ export function PercentileRadar({
   const n = metrics.length;
   if (n < 3) return null;
 
-  const size = compact ? 64 : 480;
+  const size = compact ? 64 : 440;
   const center = size / 2;
-  const maxRadius = compact ? size / 2 - 2 : 110;
-  const labelRadius = maxRadius + 35;
+  const maxRadius = compact ? size / 2 - 2 : 165;
+  const labelRadius = maxRadius + 18;
 
   const playerPoints = metrics
     .map((m, i) => pointAt(i, n, m.percentile, center, maxRadius))
@@ -49,12 +49,12 @@ export function PercentileRadar({
 
   // Marge latérale pour les libellés longs (« Taux de passes réussies
   // (gardien) ») : sans elle, ils sortent du cadre à gauche et à droite.
-  const sidePad = compact ? 0 : 90;
+  const sidePad = compact ? 0 : 120;
 
   return (
     <svg
       viewBox={`${-sidePad} 0 ${size + 2 * sidePad} ${size}`}
-      className={compact ? 'h-16 w-16 shrink-0' : 'w-full max-w-xl'}
+      className={compact ? 'h-16 w-16 shrink-0' : 'w-full max-w-2xl'}
       role="img"
       aria-label="Radar de percentiles"
     >
@@ -71,7 +71,7 @@ export function PercentileRadar({
 
       {/* bande interquartile 25-75 du groupe de pairs */}
       <polygon points={polygonPoints(n, 75, center, maxRadius)} fill="var(--color-pitch)" fillOpacity={0.18} />
-      <polygon points={polygonPoints(n, 25, center, maxRadius)} fill="var(--color-ink)" />
+      <polygon points={polygonPoints(n, 25, center, maxRadius)} fill="var(--color-surface)" />
 
       {!compact && metrics.map((m, i) => {
         const { x, y } = pointAt(i, n, 100, center, maxRadius);
@@ -117,7 +117,8 @@ export function PercentileRadar({
             textAnchor={anchor}
             dominantBaseline="middle"
             fill="var(--color-paper)"
-            fontSize={11}
+            fillOpacity={0.8}
+            fontSize={14}
             fontFamily="var(--font-sans)"
           >
             {m.label}

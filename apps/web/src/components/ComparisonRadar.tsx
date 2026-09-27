@@ -39,17 +39,17 @@ export function ComparisonRadar({
   if (n < 3 || series.length === 0) return null;
   const size = 520;
   const center = size / 2;
-  const radius = 150;
-  const labelRadius = radius + 30;
+  const radius = 175;
+  const labelRadius = radius + 18;
 
   return (
     // marge latérale : les libellés longs ne doivent jamais sortir du cadre
-    <svg viewBox={`-90 0 ${size + 180} ${size}`} className="w-full max-w-2xl" role="img" aria-label="Radar de comparaison des percentiles">
+    <svg viewBox={`-120 0 ${size + 240} ${size}`} className="w-full max-w-3xl" role="img" aria-label="Radar de comparaison des percentiles">
       {[25, 50, 75, 100].map((p) => (
         <polygon key={p} points={ring(n, p, center, radius)} fill="none" stroke="var(--color-paper)" strokeOpacity={0.12} strokeWidth={1} />
       ))}
       <polygon points={ring(n, 75, center, radius)} fill="var(--color-pitch)" fillOpacity={0.12} />
-      <polygon points={ring(n, 25, center, radius)} fill="var(--color-ink)" />
+      <polygon points={ring(n, 25, center, radius)} fill="var(--color-surface)" />
       {axes.map((a, i) => {
         const { x, y } = point(i, n, 100, center, radius);
         return <line key={a.key} x1={center} y1={center} x2={x} y2={y} stroke="var(--color-paper)" strokeOpacity={0.15} strokeWidth={1} />;
@@ -86,7 +86,7 @@ export function ComparisonRadar({
         const ly = center + labelRadius * Math.sin(angle);
         const anchor = Math.cos(angle) > 0.15 ? 'start' : Math.cos(angle) < -0.15 ? 'end' : 'middle';
         return (
-          <text key={a.key} x={lx} y={ly} textAnchor={anchor} dominantBaseline="middle" fill="var(--color-paper)" fillOpacity={0.8} fontSize={11} fontFamily="var(--font-sans)">
+          <text key={a.key} x={lx} y={ly} textAnchor={anchor} dominantBaseline="middle" fill="var(--color-paper)" fillOpacity={0.8} fontSize={14} fontFamily="var(--font-sans)">
             {a.label}
           </text>
         );

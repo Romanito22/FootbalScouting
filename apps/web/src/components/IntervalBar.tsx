@@ -60,7 +60,7 @@ export function IntervalBar({
         x1={x(low)} x2={x(high)} y1={mid} y2={mid}
         stroke="var(--color-paper)" strokeOpacity={0.7} strokeWidth={2} strokeLinecap="round"
       />
-      <circle cx={x(value)} cy={mid} r={4} fill="var(--color-spotlight)" stroke="var(--color-ink)" strokeWidth={2} />
+      <circle cx={x(value)} cy={mid} r={4.5} fill="var(--color-spotlight)" stroke="var(--color-surface)" strokeWidth={2} />
     </svg>
   );
 }

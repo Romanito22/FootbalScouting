@@ -16,11 +16,20 @@ const PREFIX = {
   unknown: '',
 } as const;
 
-/** Fin de contrat, avec alerte textuelle (jamais la couleur seule). */
-export function ContractBadge({ contractUntil }: { contractUntil: string | null }) {
+/** Fin de contrat, avec alerte textuelle (jamais la couleur seule).
+ * `compact` : dans une table, un contrat inconnu s'écrit « — ». */
+export function ContractBadge({
+  contractUntil, compact = false,
+}: {
+  contractUntil: string | null;
+  compact?: boolean;
+}) {
   const alert = contractAlert(contractUntil);
+  if (compact && alert === 'unknown') {
+    return <span className="text-xs text-paper/30" title="Date de fin de contrat inconnue (import Transfermarkt)">—</span>;
+  }
   return (
-    <span className={`whitespace-nowrap border px-1 font-mono text-xs ${STYLES[alert]}`}>
+    <span className={`whitespace-nowrap rounded border px-1.5 py-0.5 font-mono text-xs ${STYLES[alert]}`}>
       {PREFIX[alert]}{formatContract(contractUntil)}
     </span>
   );

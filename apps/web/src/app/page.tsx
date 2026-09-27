@@ -1,24 +1,37 @@
 import Link from 'next/link';
 import { count, desc, eq, isNotNull, isNull, sql } from 'drizzle-orm';
+import { BellRing, NotebookPen, Search, Trophy } from 'lucide-react';
 import {
   competitions, db, ingestionRuns, players, playerSeasonStats, resolutionQueue, savedSearches,
   scoutNotes, shortlistEntries, shortlists,
 } from '@vivier/db';
-import { POSITION_GROUP_LABELS } from '@vivier/metrics';
+import {
+  getMetric, type PositionGroup, POSITION_GROUP_LABELS, RADAR_METRICS,
+} from '@vivier/metrics';
 import { ContractBadge } from '@/components/ContractBadge';
+import { Card, Chip, EmptyState, link, Monogram, PageHeader, StatTile } from '@/components/ui';
 import { contractAlert, formatMarketValue } from '@/lib/contract';
-import { parseSearchFilters, filtersToSearchParams } from '@/lib/searchFilters';
+import { formatMetricValue } from '@/lib/format';
+import { fetchLeaderboard, leaderboardSeasons } from '@/lib/leaderboards';
+import { filtersToSearchParams, parseSearchFilters } from '@/lib/searchFilters';
 import { runSearch } from '@/lib/searchQuery';
+
+export const metadata = { title: 'Tableau de bord' };
 
 const STATUS_LABELS = {
   a_observer: 'À observer', observe: 'Observé', prioritaire: 'Prioritaire', ecarte: 'Écarté',
 } as const;
+const STATUS_ORDER = ['prioritaire', 'observe', 'a_observer', 'ecarte'] as const;
+
+/** Postes mis en avant et leur métrique d'appel (la 1ʳᵉ de leur radar). */
+const SPOTLIGHT_POSITIONS: PositionGroup[] = ['ST', 'W', 'CM', 'DC'];
 
 /**
  * Tableau de bord : ce qui demande une décision aujourd'hui. Contrats qui
  * arrivent à échéance parmi les joueurs suivis, nouveaux résultats des
- * recherches sauvegardées, shortlists, dernières observations, et l'état
- * des données (on ne décide pas sur des données périmées).
+ * recherches sauvegardées, shortlists, leaders récents, dernières
+ * observations, et l'état des données (on ne décide pas sur des données
+ * périmées).
  */
 export default async function DashboardPage() {
   const followed = await db
@@ -29,18 +42,17 @@ export default async function DashboardPage() {
       contractUntil: players.contractUntil,
       marketValueEur: players.marketValueEur,
       shortlistName: shortlists.name,
-      shortlistId: shortlists.id,
       status: shortlistEntries.status,
     })
     .from(shortlistEntries)
     .innerJoin(players, eq(players.id, shortlistEntries.playerId))
     .innerJoin(shortlists, eq(shortlists.id, shortlistEntries.shortlistId))
     .orderBy(players.id, sql`${shortlistEntries.status} = 'prioritaire' DESC`);
-  const contractAlerts = followed
-    .filter((p) => p.status !== 'ecarte')
+  const active = followed.filter((p) => p.status !== 'ecarte');
+  const contractAlerts = active
     .filter((p) => ['expired', 'urgent', 'soon'].includes(contractAlert(p.contractUntil)))
     .sort((a, b) => (a.contractUntil ?? '').localeCompare(b.contractUntil ?? ''));
-  const followedWithoutContract = followed.filter((p) => p.contractUntil === null).length;
+  const followedWithoutContract = active.filter((p) => p.contractUntil === null).length;
 
   const lists = await db
     .select({
@@ -48,15 +60,17 @@ export default async function DashboardPage() {
       name: shortlists.name,
       brief: shortlists.brief,
       total: count(shortlistEntries.playerId),
-      prioritaires: sql<number>`count(*) FILTER (WHERE ${shortlistEntries.status} = 'prioritaire')`,
-      aObserver: sql<number>`count(*) FILTER (WHERE ${shortlistEntries.status} = 'a_observer')`,
+      prioritaire: sql<number>`count(*) FILTER (WHERE ${shortlistEntries.status} = 'prioritaire')`,
+      observe: sql<number>`count(*) FILTER (WHERE ${shortlistEntries.status} = 'observe')`,
+      a_observer: sql<number>`count(*) FILTER (WHERE ${shortlistEntries.status} = 'a_observer')`,
+      ecarte: sql<number>`count(*) FILTER (WHERE ${shortlistEntries.status} = 'ecarte')`,
     })
     .from(shortlists)
     .leftJoin(shortlistEntries, eq(shortlistEntries.shortlistId, shortlists.id))
     .groupBy(shortlists.id)
     .orderBy(desc(shortlists.createdAt));
 
-  const searches = await db.select().from(savedSearches).orderBy(desc(savedSearches.createdAt)).limit(8);
+  const searches = await db.select().from(savedSearches).orderBy(desc(savedSearches.createdAt)).limit(6);
   const searchSummaries = await Promise.all(searches.map(async (search) => {
     const filters = parseSearchFilters(search.filters as Record<string, string | string[] | undefined>);
     const { rows } = await runSearch(filters);
@@ -64,6 +78,7 @@ export default async function DashboardPage() {
     const fresh = since ? rows.filter((r) => r.ingestedAt > since).length : rows.length;
     return { search, total: rows.length, fresh, href: `/search?${filtersToSearchParams(filters).toString()}` };
   }));
+  const freshTotal = searchSummaries.reduce((sum, s) => sum + s.fresh, 0);
 
   const notes = await db
     .select({
@@ -78,138 +93,212 @@ export default async function DashboardPage() {
     .from(scoutNotes)
     .innerJoin(players, eq(players.id, scoutNotes.playerId))
     .orderBy(desc(scoutNotes.createdAt))
-    .limit(5);
+    .limit(4);
+
+  // Leaders : saison la plus récente dont le groupe est assez fourni pour
+  // qu'un classement veuille dire quelque chose (≥ 20 joueurs).
+  const leaders = await Promise.all(SPOTLIGHT_POSITIONS.map(async (position) => {
+    const seasons = await leaderboardSeasons(position);
+    const season = seasons.find((s) => s.sampleSize >= 20)?.season ?? seasons[0]?.season;
+    const metric = RADAR_METRICS[position][0] ?? 'npxg';
+    const rows = season ? await fetchLeaderboard({ position, season, metric, scope: 'tier', limit: 3 }) : [];
+    return { position, season, metric, rows };
+  }));
 
   const [pending] = await db.select({ n: count() }).from(resolutionQueue).where(isNull(resolutionQueue.resolvedAt));
   const [statRows] = await db.select({ n: count() }).from(playerSeasonStats);
   const [playerCount] = await db.select({ n: count() }).from(players);
   const [strengthCount] = await db.select({ n: count() }).from(competitions).where(isNotNull(competitions.strengthCoef));
   const [competitionCount] = await db.select({ n: count() }).from(competitions);
-  const runs = await db.select().from(ingestionRuns).orderBy(desc(ingestionRuns.startedAt)).limit(4);
+  const runs = await db.select().from(ingestionRuns).orderBy(desc(ingestionRuns.startedAt)).limit(5);
+  const today = new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 
   return (
-    <main className="mx-auto max-w-6xl px-6 py-10">
-      <h1 className="font-display text-3xl font-bold tracking-tight text-paper">Tableau de bord</h1>
+    <main className="mx-auto max-w-7xl px-6 py-8 lg:px-10">
+      <PageHeader
+        eyebrow={today}
+        title="Tableau de bord"
+        description="Ce qui demande une décision aujourd'hui : échéances de contrat, nouveaux profils, shortlists en cours."
+      />
 
-      <div className="mt-8 grid grid-cols-1 gap-10 lg:grid-cols-2">
-        <section>
-          <h2 className="mb-1 font-display text-lg font-bold text-paper">Contrats à surveiller</h2>
-          <p className="mb-3 text-xs text-paper/50">
-            Joueurs en shortlist (hors écartés) dont le contrat se termine dans les 12 mois.
-          </p>
-          {contractAlerts.length === 0 ? (
-            <p className="text-sm text-paper/60">
-              Aucune échéance proche parmi les joueurs suivis
-              {followedWithoutContract > 0 && ` (${followedWithoutContract} sans date de contrat connue — importer Transfermarkt)`}.
-            </p>
-          ) : (
-            <ul className="space-y-1.5 text-sm">
-              {contractAlerts.map((p) => (
-                <li key={p.id} className="flex items-baseline justify-between gap-3 border-b border-paper/10 pb-1.5">
-                  <span>
-                    <Link href={`/players/${p.id}`} className="text-paper hover:text-spotlight">{p.fullName}</Link>
-                    <span className="ml-2 text-xs text-paper/40">
-                      {POSITION_GROUP_LABELS[p.positionGroup]} · {p.shortlistName} · {STATUS_LABELS[p.status]}
-                    </span>
-                  </span>
-                  <span className="flex items-baseline gap-2">
-                    <span className="whitespace-nowrap font-mono text-xs text-paper/50">{formatMarketValue(p.marketValueEur)}</span>
-                    <ContractBadge contractUntil={p.contractUntil} />
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-
-        <section>
-          <h2 className="mb-1 font-display text-lg font-bold text-paper">Recherches sauvegardées</h2>
-          <p className="mb-3 text-xs text-paper/50">Nouveaux résultats depuis la dernière consultation.</p>
-          {searchSummaries.length === 0 ? (
-            <p className="text-sm text-paper/60">
-              Aucune — <Link href="/search" className="underline hover:text-spotlight">en créer une</Link>.
-            </p>
-          ) : (
-            <ul className="space-y-1.5 text-sm">
-              {searchSummaries.map(({ search, total, fresh, href }) => (
-                <li key={search.id} className="flex items-baseline justify-between gap-3 border-b border-paper/10 pb-1.5">
-                  <Link href={href} className="text-paper hover:text-spotlight">{search.name}</Link>
-                  <span className="font-mono text-xs">
-                    {fresh > 0 && <span className="mr-2 border border-spotlight/60 px-1 text-spotlight">+{fresh} nouveau{fresh === 1 ? '' : 'x'}</span>}
-                    <span className="text-paper/50">{total} résultat{total === 1 ? '' : 's'}</span>
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-
-        <section>
-          <h2 className="mb-3 font-display text-lg font-bold text-paper">Shortlists</h2>
-          {lists.length === 0 ? (
-            <p className="text-sm text-paper/60">
-              Aucune — <Link href="/shortlists" className="underline hover:text-spotlight">en créer une</Link>.
-            </p>
-          ) : (
-            <ul className="space-y-1.5 text-sm">
-              {lists.map((l) => (
-                <li key={l.id} className="flex items-baseline justify-between gap-3 border-b border-paper/10 pb-1.5">
-                  <span>
-                    <Link href={`/shortlists/${l.id}`} className="text-paper hover:text-spotlight">{l.name}</Link>
-                    {l.brief && <span className="ml-2 text-xs text-paper/40">{l.brief}</span>}
-                  </span>
-                  <span className="font-mono text-xs text-paper/50">
-                    {Number(l.total)} joueur{Number(l.total) === 1 ? '' : 's'} · {Number(l.prioritaires)} prioritaire{Number(l.prioritaires) === 1 ? '' : 's'} · {Number(l.aObserver)} à observer
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-
-        <section>
-          <h2 className="mb-3 font-display text-lg font-bold text-paper">Dernières observations</h2>
-          {notes.length === 0 ? (
-            <p className="text-sm text-paper/60">Aucune note de scouting pour l'instant.</p>
-          ) : (
-            <ul className="space-y-2 text-sm">
-              {notes.map((n) => (
-                <li key={n.id} className="border-b border-paper/10 pb-2">
-                  <div className="flex items-baseline justify-between">
-                    <Link href={`/players/${n.playerId}`} className="text-paper hover:text-spotlight">{n.fullName}</Link>
-                    <span className="font-mono text-xs text-paper/50">
-                      {n.rating !== null && <span className="mr-2 text-spotlight">{n.rating}/10</span>}
-                      {new Date(n.createdAt).toLocaleDateString('fr-FR')}
-                    </span>
-                  </div>
-                  <p className="line-clamp-2 text-paper/70">{n.context ? `${n.context} — ` : ''}{n.body}</p>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
+      <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+        <StatTile label="Joueurs suivis" value={active.length} hint={`${lists.length} shortlist(s)`} />
+        <StatTile label="Prioritaires" value={followed.filter((p) => p.status === 'prioritaire').length} tone="accent" />
+        <StatTile label="Contrats ≤ 12 mois" value={contractAlerts.length} hint={followedWithoutContract ? `${followedWithoutContract} sans date connue` : undefined} tone={contractAlerts.length ? 'accent' : 'default'} />
+        <StatTile label="Nouveaux résultats" value={freshTotal} hint="recherches sauvegardées" tone={freshTotal ? 'accent' : 'default'} />
+        <StatTile label="Joueurs en base" value={Number(playerCount?.n ?? 0).toLocaleString('fr-FR')} hint={`${Number(statRows?.n ?? 0).toLocaleString('fr-FR')} lignes de stats`} />
+        <StatTile label="Championnats estimés" value={`${Number(strengthCount?.n ?? 0)}/${Number(competitionCount?.n ?? 0)}`} hint="force avec intervalle" />
       </div>
 
-      <section className="mt-12 border-t border-paper/15 pt-4">
-        <h2 className="mb-2 font-display text-lg font-bold text-paper">Données</h2>
-        <p className="font-mono text-xs text-paper/60">
-          {Number(playerCount?.n ?? 0)} joueurs · {Number(statRows?.n ?? 0)} lignes de stats ·{' '}
-          {Number(strengthCount?.n ?? 0)}/{Number(competitionCount?.n ?? 0)} compétitions avec coefficient de force ·{' '}
+      <div className="grid gap-6 xl:grid-cols-3">
+        <Card title="Contrats à surveiller" subtitle="joueurs suivis (hors écartés) en fin de contrat sous 12 mois" className="xl:col-span-2" padded={false}>
+          {contractAlerts.length === 0 ? (
+            <div className="p-5">
+              <EmptyState icon={<BellRing size={26} />} title="Aucune échéance proche">
+                {followedWithoutContract > 0
+                  ? `${followedWithoutContract} joueur(s) suivi(s) sans date de contrat : importe Transfermarkt pour activer les alertes.`
+                  : 'Les joueurs de tes shortlists sont tous sous contrat au-delà de 12 mois.'}
+              </EmptyState>
+            </div>
+          ) : (
+            <ul className="divide-y divide-line">
+              {contractAlerts.map((p) => (
+                <li key={p.id} className="flex flex-wrap items-center gap-3 px-5 py-3">
+                  <Monogram name={p.fullName} size="sm" />
+                  <div className="min-w-0 flex-1">
+                    <Link href={`/players/${p.id}`} className="font-medium text-paper hover:text-spotlight">{p.fullName}</Link>
+                    <div className="text-xs text-paper/50">
+                      {POSITION_GROUP_LABELS[p.positionGroup]} · {p.shortlistName} · {STATUS_LABELS[p.status]}
+                    </div>
+                  </div>
+                  <span className="whitespace-nowrap font-mono text-sm text-paper/70">{formatMarketValue(p.marketValueEur)}</span>
+                  <ContractBadge contractUntil={p.contractUntil} />
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+
+        <Card title="Recherches sauvegardées" subtitle="nouveaux résultats depuis la dernière consultation" padded={false}>
+          {searchSummaries.length === 0 ? (
+            <div className="p-5">
+              <EmptyState icon={<Search size={26} />} title="Aucune recherche">
+                <Link href="/search" className={link}>Composer une recherche</Link> et la sauvegarder pour être prévenu des nouveaux profils.
+              </EmptyState>
+            </div>
+          ) : (
+            <ul className="divide-y divide-line">
+              {searchSummaries.map(({ search, total, fresh, href }) => (
+                <li key={search.id} className="flex items-center justify-between gap-3 px-5 py-3">
+                  <Link href={href} className="min-w-0 truncate text-sm text-paper hover:text-spotlight">{search.name}</Link>
+                  <span className="flex shrink-0 items-center gap-2">
+                    {fresh > 0 && <Chip tone="accent">+{fresh}</Chip>}
+                    <span className="font-mono text-xs text-paper/45">{total}</span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+
+        <Card title="Shortlists" subtitle="où en est chaque liste" className="xl:col-span-2" padded={false}>
+          {lists.length === 0 ? (
+            <div className="p-5">
+              <EmptyState title="Aucune shortlist">
+                <Link href="/shortlists" className={link}>Créer une shortlist</Link> à partir d'un besoin (« 6 relayeur, ≤ 6 M€ »).
+              </EmptyState>
+            </div>
+          ) : (
+            <ul className="divide-y divide-line">
+              {lists.map((l) => {
+                const total = Number(l.total);
+                return (
+                  <li key={l.id} className="px-5 py-3">
+                    <div className="flex flex-wrap items-baseline justify-between gap-2">
+                      <Link href={`/shortlists/${l.id}`} className="font-medium text-paper hover:text-spotlight">{l.name}</Link>
+                      <span className="text-xs text-paper/45">{total} joueur{total === 1 ? '' : 's'}</span>
+                    </div>
+                    {l.brief && <div className="text-xs text-paper/45">{l.brief}</div>}
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {STATUS_ORDER.map((status) => {
+                        const n = Number(l[status]);
+                        return n > 0 ? (
+                          <Chip key={status} tone={status === 'prioritaire' ? 'accent' : status === 'ecarte' ? 'muted' : 'neutral'}>
+                            {STATUS_LABELS[status]} · {n}
+                          </Chip>
+                        ) : null;
+                      })}
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </Card>
+
+        <Card title="Dernières observations" padded={false}>
+          {notes.length === 0 ? (
+            <div className="p-5">
+              <EmptyState icon={<NotebookPen size={26} />} title="Aucune note">Les notes se prennent depuis la fiche d'un joueur.</EmptyState>
+            </div>
+          ) : (
+            <ul className="divide-y divide-line">
+              {notes.map((n) => (
+                <li key={n.id} className="px-5 py-3">
+                  <div className="flex items-baseline justify-between gap-2">
+                    <Link href={`/players/${n.playerId}`} className="text-sm font-medium text-paper hover:text-spotlight">{n.fullName}</Link>
+                    {n.rating !== null && <Chip tone="accent">{n.rating}/10</Chip>}
+                  </div>
+                  <p className="mt-1 line-clamp-2 text-sm text-paper/65">{n.context ? `${n.context} — ` : ''}{n.body}</p>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+      </div>
+
+      <Card title="Leaders récents" subtitle="saison récente la plus fournie de chaque poste · percentile dans le groupe de pairs indiqué" className="mt-6">
+        <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-4">
+          {leaders.map(({ position, season, metric, rows }) => {
+            const def = getMetric(metric);
+            return (
+              <div key={position}>
+                <div className="mb-2 flex items-baseline justify-between gap-2">
+                  <div className="text-sm font-semibold text-paper">{POSITION_GROUP_LABELS[position]}</div>
+                  <Link href={`/leaderboards?${new URLSearchParams({ position, metric, ...(season ? { season } : {}) })}`} className="text-xs text-paper/45 hover:text-spotlight">
+                    tout voir
+                  </Link>
+                </div>
+                <div className="mb-2 text-xs text-paper/45">{def?.label} · {season ?? '—'}</div>
+                {rows.length === 0 ? (
+                  <p className="text-xs text-paper/40">Aucune donnée.</p>
+                ) : (
+                  <ol className="space-y-1.5">
+                    {rows.map((r, i) => (
+                      <li key={r.playerId} className="flex items-center gap-2 text-sm">
+                        <span className="w-4 font-mono text-xs text-paper/35">{i + 1}</span>
+                        <Link href={`/players/${r.playerId}`} className="min-w-0 flex-1 truncate text-paper/90 hover:text-spotlight">{r.fullName}</Link>
+                        <span className="num font-mono text-xs text-paper">{def ? formatMetricValue(r.rawValue, def.format) : r.rawValue.toFixed(2)}</span>
+                        <span className="num w-9 text-right text-xs text-paper/50">{r.percentile}ᵉ</span>
+                      </li>
+                    ))}
+                  </ol>
+                )}
+              </div>
+            );
+          })}
+        </div>
+        <div className="mt-4 flex items-center gap-2 text-xs text-paper/40">
+          <Trophy size={13} /> <Link href="/leaderboards" className="hover:text-spotlight">Tous les classements par poste, saison et métrique</Link>
+        </div>
+      </Card>
+
+      <Card title="Données" subtitle="dernières ingestions" className="mt-6" padded={false}>
+        <table className="w-full text-sm">
+          <tbody className="divide-y divide-line">
+            {runs.map((r) => (
+              <tr key={r.id}>
+                <td className="px-5 py-2 text-paper/60">{new Date(r.startedAt).toLocaleString('fr-FR')}</td>
+                <td className="px-3 py-2 text-paper/80">{r.source}</td>
+                <td className="px-3 py-2 font-mono text-xs text-paper/50">{r.scope}</td>
+                <td className="px-3 py-2">
+                  <Chip tone={r.status === 'success' ? 'positive' : r.status === 'running' ? 'accent' : 'negative'}>
+                    {r.status === 'success' ? 'terminé' : r.status === 'running' ? 'en cours' : 'échec'}
+                  </Chip>
+                </td>
+                <td className="px-5 py-2 text-right font-mono text-xs text-paper/50">{r.rowsWritten ?? '—'} lignes</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <div className="flex flex-wrap items-center gap-3 border-t border-line px-5 py-2.5 text-xs text-paper/45">
           {Number(pending?.n ?? 0) > 0
-            ? <Link href="/admin/resolution-queue" className="text-spotlight underline">{Number(pending?.n)} identité(s) à arbitrer</Link>
+            ? <Link href="/admin/resolution-queue" className="text-spotlight hover:underline">{Number(pending?.n)} identité(s) à arbitrer</Link>
             : 'aucune identité à arbitrer'}
-          {' · '}<Link href="/health" className="underline hover:text-spotlight">santé système</Link>
-        </p>
-        <ul className="mt-2 space-y-0.5 font-mono text-xs text-paper/50">
-          {runs.map((r) => (
-            <li key={r.id}>
-              {new Date(r.startedAt).toLocaleString('fr-FR')} · {r.source} · {r.scope} ·{' '}
-              <span className={r.status === 'success' ? 'text-pitch' : 'text-signal'}>{r.status}</span>
-              {r.rowsWritten !== null && ` · ${r.rowsWritten} lignes`}
-            </li>
-          ))}
-        </ul>
-      </section>
+          <span>·</span>
+          <Link href="/health" className="hover:text-spotlight">santé système</Link>
+        </div>
+      </Card>
     </main>
   );
 }

@@ -128,3 +128,33 @@ export function describePeerGroup(group: RowPercentiles, seasonSpan: number): st
   const n = group.peerGroupSampleSize;
   return `${group.peerGroupLabel} — ${n} joueur${n === 1 ? '' : 's'}, ≥ ${group.minMinutes} min, saisons ± ${seasonSpan}`;
 }
+
+/**
+ * Valeurs brutes de tous les membres d'un groupe de pairs, par métrique —
+ * pour situer un joueur dans la distribution, pas seulement par son rang.
+ */
+export async function fetchPeerValues(
+  peerGroupId: string, metrics: string[],
+): Promise<Map<string, { id: string; value: number }[]>> {
+  const result = new Map<string, { id: string; value: number }[]>();
+  if (metrics.length === 0) return result;
+  const rows = await db
+    .select({
+      playerId: playerPercentiles.playerId,
+      season: playerPercentiles.season,
+      metric: playerPercentiles.metric,
+      rawValue: playerPercentiles.rawValue,
+    })
+    .from(playerPercentiles)
+    .where(and(
+      eq(playerPercentiles.peerGroupId, peerGroupId),
+      inArray(playerPercentiles.metric, metrics),
+    ));
+  for (const row of rows) {
+    if (row.rawValue === null) continue;
+    const list = result.get(row.metric) ?? [];
+    list.push({ id: `${row.playerId}|${row.season}`, value: Number(row.rawValue) });
+    result.set(row.metric, list);
+  }
+  return result;
+}

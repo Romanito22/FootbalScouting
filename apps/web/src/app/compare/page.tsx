@@ -1,16 +1,20 @@
 import Link from 'next/link';
+import { ArrowLeftRight, X } from 'lucide-react';
 import {
   getMetric, METRIC_FAMILIES, METRIC_FAMILY_LABELS, type MetricDef, metricsForPosition,
   MIN_MINUTES, PEER_GROUP_SEASON_SPAN, POSITION_GROUP_LABELS, RADAR_METRICS,
 } from '@vivier/metrics';
-import { ComparisonRadar, SeriesSwatch } from '@/components/ComparisonRadar';
+import { ComparisonRadar, SERIES_COLORS, SeriesSwatch } from '@/components/ComparisonRadar';
 import { ContractBadge } from '@/components/ContractBadge';
+import { btnPrimary, Card, Chip, EmptyState, field, Monogram, PageHeader } from '@/components/ui';
 import { type ComparedPlayer, loadComparison, MAX_COMPARED, parseIds } from '@/lib/compare';
 import { ageOn, formatMarketValue } from '@/lib/contract';
 import { formatMetricValue } from '@/lib/format';
 import { describePeerGroup } from '@/lib/percentiles';
 import { listPlayers } from '@/lib/players';
 import { CI_LABEL, describeStrengthStatus, formatCoefWithInterval } from '@/lib/strength';
+
+export const metadata = { title: 'Comparer' };
 
 type Params = Record<string, string | string[] | undefined>;
 
@@ -44,7 +48,7 @@ export default async function ComparePage({ searchParams }: { searchParams: Prom
   const sharedGroup = compared.length > 1
     && compared.every((p) => p.tier && p.tier.peerGroupId === compared[0]?.tier?.peerGroupId);
   const candidates = query && ids.length < MAX_COMPARED
-    ? (await listPlayers({ query, position: null, page: 1 })).rows.slice(0, 8)
+    ? (await listPlayers({ query, position: null, page: 1 })).rows.filter((c) => !ids.includes(c.id)).slice(0, 8)
     : [];
 
   const positions = [...new Set(compared.map((p) => p.positionGroup))];
@@ -60,191 +64,161 @@ export default async function ComparePage({ searchParams }: { searchParams: Prom
     name: p.fullName,
     percentiles: new Map(axes.map((a) => [a.key, p.tier?.byMetric.get(a.key)?.percentile ?? 0])),
   }));
-
-  const tableMetrics: MetricDef[] = reference && !mixesGoalkeepers
-    ? metricsForPosition(reference.positionGroup)
-    : [];
+  const tableMetrics: MetricDef[] = reference && !mixesGoalkeepers ? metricsForPosition(reference.positionGroup) : [];
 
   return (
-    <main className="mx-auto max-w-6xl px-6 py-10">
-      <h1 className="font-display text-2xl font-bold tracking-tight text-paper">Comparer</h1>
-      <p className="mt-1 text-sm text-paper/60">
-        Jusqu'à {MAX_COMPARED} joueurs, sur leur saison exploitable la plus récente ou sur une
-        saison commune. Chaque percentile reste relatif au groupe de pairs de son joueur, affiché
-        sous son nom.
-      </p>
+    <main className="mx-auto max-w-7xl px-6 py-8 lg:px-10">
+      <PageHeader
+        eyebrow="Décider"
+        title="Comparer"
+        description={`Jusqu'à ${MAX_COMPARED} finalistes, sur leur saison exploitable la plus récente ou sur une saison commune. Chaque percentile reste relatif au groupe de pairs de son joueur, indiqué sur sa carte.`}
+      />
 
-      <form method="get" className="mt-6 flex flex-wrap items-end gap-3 border-b border-paper/15 pb-6">
+      <form method="get" className="mb-6 flex flex-wrap items-end gap-3">
         <input type="hidden" name="ids" value={ids.join(',')} />
-        <label className="text-xs text-paper/50">
-          Ajouter un joueur
-          <input
-            type="search" name="q" defaultValue={query ?? ''} placeholder="nom…"
-            disabled={ids.length >= MAX_COMPARED}
-            className="mt-1 block w-64 border border-paper/30 bg-ink px-2 py-1 text-sm text-paper disabled:opacity-40"
-          />
-        </label>
-        <button type="submit" disabled={ids.length >= MAX_COMPARED} className="border border-spotlight px-4 py-1.5 text-sm text-spotlight hover:bg-spotlight/10 disabled:opacity-40">
-          Chercher
-        </button>
-        {ids.length >= MAX_COMPARED && (
-          <p className="text-xs text-paper/50">Maximum atteint — retire un joueur pour en ajouter un autre.</p>
-        )}
+        {season && <input type="hidden" name="season" value={season} />}
+        <div className="w-80"><input
+          type="search" name="q" defaultValue={query ?? ''}
+          placeholder={ids.length >= MAX_COMPARED ? 'Maximum atteint — retire un joueur' : 'Ajouter un joueur (nom)…'}
+          disabled={ids.length >= MAX_COMPARED}
+          aria-label="Ajouter un joueur"
+          className={`${field} disabled:opacity-40`}
+        /></div>
+        <button type="submit" disabled={ids.length >= MAX_COMPARED} className={btnPrimary}>Chercher</button>
         {candidates.length > 0 && (
-          <ul className="basis-full space-y-1 text-sm">
-            {candidates.filter((c) => !ids.includes(c.id)).map((c) => (
-              <li key={c.id}>
-                <Link href={compareHref([...ids, c.id], season)} className="text-paper hover:text-spotlight">
-                  + {c.fullName}
-                </Link>
-                <span className="ml-2 font-mono text-xs text-paper/40">
-                  {POSITION_GROUP_LABELS[c.positionGroup]}{c.season ? ` · ${c.competitionName} ${c.season}` : ''}
-                </span>
-              </li>
+          <div className="flex basis-full flex-wrap gap-2">
+            {candidates.map((c) => (
+              <Link key={c.id} href={compareHref([...ids, c.id], season)} className="rounded-full border border-line bg-surface px-3 py-1 text-sm text-paper/80 hover:border-spotlight/60 hover:text-paper">
+                + {c.fullName}
+                <span className="ml-1.5 text-xs text-paper/40">{POSITION_GROUP_LABELS[c.positionGroup]}{c.season ? ` · ${c.season}` : ''}</span>
+              </Link>
             ))}
-          </ul>
+          </div>
         )}
       </form>
 
       {compared.length === 0 ? (
-        <p className="mt-8 text-sm text-paper/60">
-          Aucun joueur sélectionné. Ajoute-en ci-dessus, ou depuis une shortlist, une recherche ou
-          une fiche joueur.
-        </p>
+        <EmptyState icon={<ArrowLeftRight size={28} />} title="Aucun joueur sélectionné">
+          Ajoute-en ci-dessus, ou coche des joueurs dans une shortlist, une recherche ou un classement.
+        </EmptyState>
       ) : (
-        <>
+        <div className="space-y-6">
           {compared.length > 1 && (
-            <nav className="mt-6 flex flex-wrap items-center gap-3 font-mono text-xs text-paper/60" aria-label="Saison de comparaison">
-              <span>Saison comparée :</span>
-              <Link href={compareHref(ids)} className={season === null ? 'text-spotlight' : 'underline hover:text-spotlight'}>
-                la plus récente exploitable de chacun
+            <nav className="flex flex-wrap items-center gap-2 text-sm" aria-label="Saison de comparaison">
+              <span className="text-paper/50">Saison comparée</span>
+              <Link href={compareHref(ids)} className={`rounded-full border px-3 py-1 ${season === null ? 'border-spotlight/60 bg-spotlight/10 text-paper' : 'border-line text-paper/60 hover:text-paper'}`}>
+                la plus récente de chacun
               </Link>
               {commonSeasons.map((s) => (
-                <Link key={s} href={compareHref(ids, s)} className={season === s ? 'text-spotlight' : 'underline hover:text-spotlight'}>
+                <Link key={s} href={compareHref(ids, s)} className={`rounded-full border px-3 py-1 ${season === s ? 'border-spotlight/60 bg-spotlight/10 text-paper' : 'border-line text-paper/60 hover:text-paper'}`}>
                   {s}
                 </Link>
               ))}
-              {commonSeasons.length === 0 && (
-                <span className="text-paper/40">aucune saison exploitable (≥ 600 min) commune à tous</span>
-              )}
+              {commonSeasons.length === 0 && <span className="text-xs text-paper/40">aucune saison exploitable commune à tous</span>}
             </nav>
           )}
 
-          <section className="mt-6 grid gap-6" style={{ gridTemplateColumns: `repeat(${compared.length}, minmax(0, 1fr))` }}>
-            {compared.map((p, i) => (
-              <PlayerCard key={p.id} player={p} index={i} ids={ids} season={season} />
-            ))}
-          </section>
+          <div className="grid gap-4" style={{ gridTemplateColumns: `repeat(${compared.length}, minmax(0, 1fr))` }}>
+            {compared.map((p, i) => <PlayerCard key={p.id} player={p} index={i} ids={ids} season={season} />)}
+          </div>
 
           {!samePosition && (
-            <p className="mt-6 rounded-sm border border-spotlight/40 bg-spotlight/10 px-3 py-2 text-sm text-spotlight">
+            <p className="rounded-lg border border-spotlight/40 bg-spotlight/10 px-4 py-3 text-sm text-spotlight">
               {mixesGoalkeepers
                 ? 'Gardien et joueur(s) de champ : aucune métrique commune, pas de radar ni de table partagés.'
-                : `Postes différents : chaque percentile est calculé contre les joueurs de SON poste — les radars se lisent côte à côte, pas comme un classement direct. Axes du radar : ${POSITION_GROUP_LABELS[reference?.positionGroup ?? 'CM']}.`}
+                : `Postes différents : chaque percentile est calculé contre les joueurs de SON poste — à lire côte à côte, pas comme un classement direct. Axes : ${POSITION_GROUP_LABELS[reference?.positionGroup ?? 'CM']}.`}
             </p>
           )}
 
           {axes.length >= 3 && (
-            <section className="mt-8 flex flex-col items-center">
-              <ComparisonRadar axes={axes} series={series} />
+            <Card title="Profils superposés" subtitle="percentiles sur les axes du poste · bande = 25ᵉ-75ᵉ, pointillés = médiane">
+              <div className="mb-2 flex flex-wrap justify-center gap-5 text-sm">
+                {compared.map((p, i) => <span key={p.id} className="flex items-center gap-2 text-paper/80"><SeriesSwatch index={i} /> {p.fullName}</span>)}
+              </div>
+              <div className="flex justify-center"><ComparisonRadar axes={axes} series={series} /></div>
               {axes.length < axisKeys.length && (
-                <p className="font-mono text-xs text-paper/40">
-                  {axisKeys.length - axes.length} axe(s) retiré(s) : non mesuré(s) pour au moins un joueur.
-                </p>
+                <p className="text-center text-xs text-paper/40">{axisKeys.length - axes.length} axe(s) retiré(s) : non mesuré(s) pour au moins un joueur.</p>
               )}
-            </section>
+            </Card>
           )}
 
           {tableMetrics.length > 0 && (
-            <section className="mt-8">
-              <h2 className="mb-2 font-display text-lg font-bold text-paper">Métriques per-90 et percentiles</h2>
-              <p className="mb-3 text-xs text-paper/50">
-                {sharedGroup
-                  ? '▲ = meilleur percentile de la ligne (tous classés dans le même groupe de pairs).'
-                  : 'Groupes de pairs différents : pas de « meilleur » désigné, chaque percentile se lit dans le groupe de son joueur (cf. cartes).'}
-              </p>
-              <table className="w-full border-collapse text-sm">
-                <thead>
-                  <tr className="border-b border-paper/20 text-left text-paper/50">
-                    <th className="py-1.5 font-normal">Métrique</th>
-                    {compared.map((p, i) => (
-                      <th key={p.id} className="py-1.5 text-right font-normal">
-                        <SeriesSwatch index={i} /> <span className="text-paper">{p.fullName}</span>
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
+            <Card
+              title="Métrique par métrique"
+              subtitle={sharedGroup
+                ? '▲ = meilleur percentile de la ligne (tous classés dans le même groupe de pairs)'
+                : 'groupes de pairs différents : pas de « meilleur » désigné, chaque percentile se lit dans le groupe de son joueur'}
+            >
+              <div className="grid gap-x-10 gap-y-6 lg:grid-cols-2">
                 {METRIC_FAMILIES.map((family) => {
                   const defs = tableMetrics.filter((d) => d.family === family);
                   if (defs.length === 0) return null;
                   return (
-                    <tbody key={family} className="font-mono">
-                      <tr>
-                        <td colSpan={compared.length + 1} className="pb-1 pt-4 font-sans text-xs uppercase tracking-wide text-paper/40">
-                          {METRIC_FAMILY_LABELS[family]}
-                        </td>
-                      </tr>
-                      {defs.map((def) => {
-                        const pcts = compared.map((p) => p.tier?.byMetric.get(def.key)?.percentile ?? null);
-                        const best = sharedGroup ? bestIndex(pcts) : null;
-                        return (
-                          <tr key={def.key} className="border-b border-paper/10" title={def.note}>
-                            <td className="py-1 font-sans text-paper/80">{def.label}</td>
-                            {compared.map((p, i) => {
-                              const raw = p.row?.metrics[def.key];
-                              const pct = pcts[i];
-                              return (
-                                <td key={p.id} className="py-1 text-right">
-                                  {raw === undefined ? <span className="text-paper/30">non mesuré</span> : formatMetricValue(raw, def.format)}
-                                  {pct !== null && (
-                                    <span className={`ml-2 inline-block w-12 ${best === i ? 'text-spotlight' : 'text-paper/50'}`}>
-                                      {best === i ? '▲' : ''}{pct}ᵉ
-                                    </span>
-                                  )}
-                                </td>
-                              );
-                            })}
-                          </tr>
-                        );
-                      })}
-                    </tbody>
+                    <div key={family}>
+                      <h3 className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-paper/50">{METRIC_FAMILY_LABELS[family]}</h3>
+                      <div className="space-y-3">
+                        {defs.map((def) => {
+                          const pcts = compared.map((p) => p.tier?.byMetric.get(def.key)?.percentile ?? null);
+                          const best = sharedGroup ? bestIndex(pcts) : null;
+                          return (
+                            <div key={def.key} title={def.note}>
+                              <div className="mb-1 text-sm text-paper/80">{def.label}</div>
+                              <div className="space-y-1">
+                                {compared.map((p, i) => {
+                                  const raw = p.row?.metrics[def.key];
+                                  const pct = pcts[i] ?? null;
+                                  return (
+                                    <div key={p.id} className="grid grid-cols-[4.5rem_minmax(0,1fr)_3.5rem] items-center gap-2">
+                                      <span className="num text-right font-mono text-xs text-paper/60">
+                                        {raw === undefined ? '—' : formatMetricValue(raw, def.format)}
+                                      </span>
+                                      <div className="relative h-1.5 rounded-sm bg-raised" aria-hidden="true">
+                                        <span className="absolute inset-y-0 w-px bg-paper/25" style={{ left: '50%' }} />
+                                        {pct !== null && (
+                                          <span className="absolute inset-y-0 left-0 rounded-r-[4px]" style={{ width: `${Math.max(pct, 1.5)}%`, background: SERIES_COLORS[i] }} />
+                                        )}
+                                      </div>
+                                      <span className="num text-right text-xs text-paper">
+                                        {pct === null ? <span className="text-paper/30">—</span> : <>{best === i && '▲ '}{pct}ᵉ</>}
+                                      </span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
                   );
                 })}
-              </table>
-            </section>
+              </div>
+            </Card>
           )}
 
           {compared.some((p) => p.adjusted) && (
-            <section className="mt-8">
-              <h2 className="mb-2 font-display text-lg font-bold text-paper">Niveau ajusté — toutes compétitions</h2>
-              <p className="mb-3 text-xs text-paper/50">
-                Percentile des valeurs × coefficient de force du championnat, contre tout le poste quel que
-                soit le championnat · [{CI_LABEL}]. Deux intervalles qui se chevauchent : pas de différence
-                de niveau établie.
-              </p>
-              <table className="w-full border-collapse text-sm">
+            <Card title="Niveau ajusté — toutes compétitions" subtitle={`valeurs × force du championnat, contre tout le poste · [${CI_LABEL}] · des intervalles qui se chevauchent = pas de différence établie`} padded={false}>
+              <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-paper/20 text-left text-paper/50">
-                    <th className="py-1.5 font-normal">Métrique</th>
+                  <tr className="border-b border-line text-left text-xs text-paper/50">
+                    <th className="px-5 py-2 font-medium">Métrique</th>
                     {compared.map((p, i) => (
-                      <th key={p.id} className="py-1.5 text-right font-normal">
-                        <SeriesSwatch index={i} /> <span className="text-paper">{p.fullName}</span>
-                      </th>
+                      <th key={p.id} className="px-3 py-2 text-right font-medium"><SeriesSwatch index={i} /> <span className="text-paper/80">{p.fullName}</span></th>
                     ))}
                   </tr>
                 </thead>
-                <tbody className="font-mono">
+                <tbody className="num">
                   {tableMetrics.filter((d) => d.leagueAdjusted).map((def) => (
-                    <tr key={def.key} className="border-b border-paper/10">
-                      <td className="py-1 font-sans text-paper/80">{def.label}</td>
+                    <tr key={def.key} className="border-b border-line/60">
+                      <td className="px-5 py-1.5 text-paper/80">{def.label}</td>
                       {compared.map((p) => {
                         const pct = p.adjusted?.byMetric.get(def.key);
                         return (
-                          <td key={p.id} className="py-1 text-right">
+                          <td key={p.id} className="px-3 py-1.5 text-right font-mono text-xs">
                             {pct ? (
                               <>
-                                <span className="text-spotlight">{pct.percentile}ᵉ</span>
-                                <span className="ml-1 text-paper/40">[{pct.percentileLow ?? pct.percentile} – {pct.percentileHigh ?? pct.percentile}]</span>
+                                <span className="text-paper">{pct.percentile}ᵉ</span>
+                                <span className="ml-1 text-paper/40">[{pct.percentileLow ?? pct.percentile}–{pct.percentileHigh ?? pct.percentile}]</span>
                               </>
                             ) : <span className="text-paper/30">—</span>}
                           </td>
@@ -254,9 +228,9 @@ export default async function ComparePage({ searchParams }: { searchParams: Prom
                   ))}
                 </tbody>
               </table>
-            </section>
+            </Card>
           )}
-        </>
+        </div>
       )}
     </main>
   );
@@ -273,56 +247,43 @@ function PlayerCard({
   const age = ageOn(p.birthDate);
   const strength = p.competition ? formatCoefWithInterval(p.competition) : null;
   return (
-    <article className="border-t-2 pt-3" style={{ borderColor: `var(--color-series-${index + 1})` }}>
-      <div className="flex items-baseline justify-between gap-2">
-        <h2 className="font-display text-xl font-bold text-paper">
-          <SeriesSwatch index={index} />{' '}
-          <Link href={`/players/${p.id}`} className="hover:text-spotlight">{p.fullName}</Link>
-        </h2>
-        <Link href={compareHref(ids.filter((id) => id !== p.id), season)} className="font-mono text-xs text-paper/40 hover:text-signal">
-          retirer
-        </Link>
+    <article className="rounded-xl border border-line bg-surface p-4" style={{ boxShadow: `inset 0 3px 0 ${SERIES_COLORS[index]}` }}>
+      <div className="flex items-start gap-3">
+        <Monogram name={p.fullName} size="sm" />
+        <div className="min-w-0 flex-1">
+          <Link href={`/players/${p.id}`} className="block truncate font-display text-lg font-bold text-paper hover:text-spotlight">{p.fullName}</Link>
+          <div className="flex items-center gap-2 text-xs text-paper/55">
+            <SeriesSwatch index={index} />
+            {POSITION_GROUP_LABELS[p.positionGroup]} · {age !== null ? `${age} ans` : 'âge inconnu'}
+          </div>
+        </div>
+        <Link href={compareHref(ids.filter((id) => id !== p.id), season)} aria-label={`Retirer ${p.fullName}`} className="text-paper/35 hover:text-signal"><X size={16} /></Link>
       </div>
-      <p className="font-mono text-xs text-paper/60">
-        {POSITION_GROUP_LABELS[p.positionGroup]} · {age !== null ? `${age} ans` : 'âge inconnu'}
-        {p.nationality?.length ? ` · ${p.nationality.join(', ')}` : ''}
-        {p.foot ? ` · pied ${p.foot === 'left' ? 'gauche' : p.foot === 'right' ? 'droit' : 'ambidextre'}` : ''}
-      </p>
-      <p className="mt-2 flex flex-wrap items-center gap-2 text-sm">
-        <ContractBadge contractUntil={p.contractUntil} />
-        <span className="font-mono text-xs text-paper/60">{formatMarketValue(p.marketValueEur)}</span>
-      </p>
+      <div className="mt-3 flex flex-wrap gap-1.5">
+        <ContractBadge contractUntil={p.contractUntil} compact />
+        {p.marketValueEur !== null && <Chip>{formatMarketValue(p.marketValueEur)}</Chip>}
+        {p.notes.averageRating !== null && <Chip tone="accent">{p.notes.averageRating.toFixed(1)}/10 · {p.notes.count} note(s)</Chip>}
+        {p.shortlistStatuses.map((s) => <Chip key={s.shortlistName} tone={s.status === 'prioritaire' ? 'accent' : 'neutral'}>{STATUS_LABELS[s.status] ?? s.status}</Chip>)}
+      </div>
       {p.row ? (
-        <div className="mt-2 font-mono text-xs text-paper/60">
-          <p className="text-paper/80">{p.row.competitionName} · {p.row.season} · {p.row.clubName}</p>
-          <p>{p.row.minutes} min ({p.row.matchesPlayed ?? '?'} matchs)</p>
+        <dl className="mt-3 space-y-1 border-t border-line pt-3 text-xs">
+          <div className="text-sm text-paper/85">{p.row.competitionName} · {p.row.season}</div>
+          <div className="text-paper/55">{p.row.clubName} · {p.row.minutes} min · {p.row.matchesPlayed ?? '?'} matchs</div>
           {p.newerRow && (
-            <p className="text-spotlight">
-              {p.newerRow.minutes >= MIN_MINUTES ? 'saison plus récente disponible' : 'plus récent sous le seuil'} :{' '}
-              {p.newerRow.competitionName} {p.newerRow.season} ({p.newerRow.minutes} min)
-            </p>
+            <div className="text-spotlight">
+              {p.newerRow.minutes >= MIN_MINUTES ? 'saison plus récente disponible' : 'plus récent sous le seuil'} : {p.newerRow.competitionName} {p.newerRow.season} ({p.newerRow.minutes} min)
+            </div>
           )}
-          <p className="mt-1">
-            {p.tier ? `vs ${describePeerGroup(p.tier, PEER_GROUP_SEASON_SPAN)}` : 'pas de percentiles (moins de 600 min ou non calculés)'}
-          </p>
-          <p className="mt-1">
+          <div className="text-paper/45">{p.tier ? `vs ${describePeerGroup(p.tier, PEER_GROUP_SEASON_SPAN)}` : 'pas de percentiles (moins de 600 min ou non calculés)'}</div>
+          <div className="text-paper/45">
             Force du championnat :{' '}
             {p.competition?.status === 'reference' ? 'référence (1.00)'
-              : strength ? <span className="text-spotlight">{strength} {CI_LABEL}</span>
+              : strength ? <span className="text-paper/80">{strength} {CI_LABEL}</span>
                 : p.competition ? describeStrengthStatus(p.competition) : '—'}
-          </p>
-        </div>
+          </div>
+        </dl>
       ) : (
-        <p className="mt-2 font-mono text-xs text-paper/40">Aucune statistique.</p>
-      )}
-      <p className="mt-2 font-mono text-xs text-paper/60">
-        Notes : {p.notes.count}
-        {p.notes.averageRating !== null && ` · moyenne ${p.notes.averageRating.toFixed(1)}/10 · dernière ${p.notes.latestRating}/10`}
-      </p>
-      {p.shortlistStatuses.length > 0 && (
-        <p className="font-mono text-xs text-paper/60">
-          {p.shortlistStatuses.map((s) => `${s.shortlistName} : ${STATUS_LABELS[s.status] ?? s.status}`).join(' · ')}
-        </p>
+        <p className="mt-3 text-xs text-paper/40">Aucune statistique.</p>
       )}
     </article>
   );

@@ -1,4 +1,5 @@
 import { sql } from 'drizzle-orm';
+import { Card, PageHeader, StatTile } from '@/components/ui';
 import {
   clubs, competitions, db, ingestionRuns, peerGroups, playerAliases,
   playerPercentiles, players, playerSeasonStats, playerVectors,
@@ -60,54 +61,61 @@ async function getHealth() {
   }
 }
 
+export const metadata = { title: 'Santé système' };
+
 export default async function HealthPage() {
   const health = await getHealth();
 
   return (
-    <main className="mx-auto max-w-3xl px-6 py-10 text-sm">
-      <div className="mb-6 flex items-baseline justify-between">
-        <h1 className="text-base font-bold tracking-tight">VIVIER — santé système</h1>
+    <main className="mx-auto max-w-5xl px-6 py-8 lg:px-10">
+      <PageHeader eyebrow="Données" title="Santé système" description="Docker → Postgres → pgvector → Drizzle → Next.js : chaque maillon de la chaîne." />
+
+      <div className="mb-6 grid gap-3 sm:grid-cols-3">
+        <StatTile label="Postgres" value={health.ok ? 'connecté' : 'hors ligne'} hint={health.ok ? health.serverTime ?? undefined : undefined} tone={health.ok ? 'default' : 'accent'} />
+        <StatTile label="Extension vector" value={health.ok ? health.vectorVersion ?? 'absente' : '—'} />
+        <StatTile label="Dernière ingestion" value={health.ok && health.lastRun ? health.lastRun.status : '—'} hint={health.ok && health.lastRun ? new Date(health.lastRun.startedAt).toLocaleString('fr-FR') : undefined} />
       </div>
 
-      <section className="mb-6">
-        <h2 className="mb-1 text-neutral-500">connexion postgres</h2>
-        {health.ok ? (
-          <p className="text-green-500">OK — {health.serverTime}</p>
-        ) : (
-          <p className="whitespace-pre-wrap text-red-500">ERREUR — {health.error}</p>
-        )}
-      </section>
-
-      {health.ok && (
-        <>
-          <section className="mb-6">
-            <h2 className="mb-1 text-neutral-500">extension vector</h2>
-            <p>{health.vectorVersion ?? 'non installée'}</p>
-          </section>
-
-          <section className="mb-6">
-            <h2 className="mb-1 text-neutral-500">tables</h2>
-            <table className="w-full border-collapse">
-              <tbody>
+      {!health.ok ? (
+        <Card title="Erreur de connexion">
+          <pre className="whitespace-pre-wrap text-sm text-signal">{health.error}</pre>
+          <p className="mt-3 text-sm text-paper/60">Lancer <code>pnpm db:up</code> puis <code>pnpm db:migrate</code>.</p>
+        </Card>
+      ) : (
+        <div className="grid gap-6 md:grid-cols-2">
+          <Card title="Tables" padded={false}>
+            <table className="w-full text-sm">
+              <tbody className="num">
                 {health.counts.map(({ name, count }) => (
-                  <tr key={name} className="border-b border-neutral-800">
-                    <td className="py-0.5 pr-4 text-neutral-400">{name}</td>
-                    <td className="py-0.5 text-right tabular-nums">{count}</td>
+                  <tr key={name} className="border-b border-line/60">
+                    <td className="px-5 py-1.5 font-mono text-xs text-paper/70">{name}</td>
+                    <td className="px-5 py-1.5 text-right font-mono text-paper">{count.toLocaleString('fr-FR')}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
-          </section>
-
-          <section>
-            <h2 className="mb-1 text-neutral-500">dernière ingestion</h2>
+          </Card>
+          <Card title="Dernière ingestion">
             {health.lastRun ? (
-              <pre className="whitespace-pre-wrap">{JSON.stringify(health.lastRun, null, 2)}</pre>
-            ) : (
-              <p className="text-neutral-500">aucune ingestion</p>
-            )}
-          </section>
-        </>
+              <dl className="space-y-2 text-sm">
+                {Object.entries({
+                  Source: health.lastRun.source,
+                  Périmètre: health.lastRun.scope,
+                  Statut: health.lastRun.status,
+                  Lignes: String(health.lastRun.rowsWritten ?? '—'),
+                  Début: new Date(health.lastRun.startedAt).toLocaleString('fr-FR'),
+                  Fin: health.lastRun.finishedAt ? new Date(health.lastRun.finishedAt).toLocaleString('fr-FR') : '—',
+                  Erreur: health.lastRun.error ?? '—',
+                }).map(([k, v]) => (
+                  <div key={k} className="flex justify-between gap-4 border-b border-line/60 pb-1.5">
+                    <dt className="text-paper/50">{k}</dt>
+                    <dd className="text-right font-mono text-xs text-paper/85">{v}</dd>
+                  </div>
+                ))}
+              </dl>
+            ) : <p className="text-sm text-paper/50">Aucune ingestion.</p>}
+          </Card>
+        </div>
       )}
     </main>
   );

@@ -1,5 +1,7 @@
 import { desc, eq } from 'drizzle-orm';
+import { NotebookPen } from 'lucide-react';
 import { db, scoutNotes } from '@vivier/db';
+import { btnPrimary, EmptyState, field, label } from '@/components/ui';
 import { addNote } from './actions';
 
 /**
@@ -14,47 +16,55 @@ export async function NotesSection({ playerId }: { playerId: number }) {
     .orderBy(desc(scoutNotes.createdAt));
 
   return (
-    <section className="mb-10 border-t border-paper/15 pt-6">
-      <h2 className="mb-4 font-display text-xl font-bold text-paper">Notes de scouting</h2>
-
-      <form action={addNote} className="mb-6 space-y-2 border border-paper/15 p-3">
+    <div className="grid gap-6 lg:grid-cols-5">
+      <form action={addNote} className="space-y-3 lg:col-span-2">
         <input type="hidden" name="playerId" value={playerId} />
-        <div className="flex flex-wrap gap-2">
-          <input
-            type="text" name="context" placeholder="Contexte (ex. vs OM, 12/03, entré 78e)"
-            className="flex-1 border border-paper/30 bg-ink px-2 py-1 text-sm text-paper"
-          />
-          <input type="date" name="observedAt" className="border border-paper/30 bg-ink px-2 py-1 text-sm text-paper" />
-          <input
-            type="number" name="rating" min={1} max={10} placeholder="Note /10"
-            className="w-24 border border-paper/30 bg-ink px-2 py-1 text-sm text-paper"
-          />
+        <label className={label}>
+          Contexte
+          <input type="text" name="context" placeholder="vs OM, 12/03, entré 78e" className={`${field} mt-1`} />
+        </label>
+        <div className="grid grid-cols-2 gap-3">
+          <label className={label}>
+            Date d'observation
+            <input type="date" name="observedAt" className={`${field} mt-1`} />
+          </label>
+          <label className={label}>
+            Note /10
+            <input type="number" name="rating" min={1} max={10} className={`${field} mt-1`} />
+          </label>
         </div>
-        <textarea
-          name="body" required rows={3} placeholder="Observation..."
-          className="w-full border border-paper/30 bg-ink px-2 py-1 text-sm text-paper"
-        />
-        <button type="submit" className="border border-pitch/50 px-3 py-1.5 text-sm text-pitch hover:border-pitch hover:bg-pitch/10">
-          Ajouter la note
-        </button>
+        <label className={label}>
+          Observation
+          <textarea name="body" required rows={4} placeholder="Ce que les chiffres ne disent pas…" className={`${field} mt-1`} />
+        </label>
+        <button type="submit" className={btnPrimary}>Ajouter la note</button>
       </form>
 
-      {notes.length === 0 && <p className="text-sm text-paper/50">Aucune note pour l'instant.</p>}
-
-      <div className="space-y-4">
-        {notes.map((note) => (
-          <article key={note.id} className="border-b border-paper/10 pb-3">
-            <div className="mb-1 flex items-baseline justify-between font-mono text-xs text-paper/50">
-              <span>
-                {note.context ?? '—'}
-                {note.observedAt && ` · ${new Date(note.observedAt).toLocaleDateString('fr-FR')}`}
-              </span>
-              {note.rating !== null && <span className="text-spotlight">{note.rating}/10</span>}
-            </div>
-            <p className="whitespace-pre-wrap text-sm text-paper/90">{note.body}</p>
-          </article>
-        ))}
+      <div className="lg:col-span-3">
+        {notes.length === 0 ? (
+          <EmptyState icon={<NotebookPen size={28} />} title="Aucune observation">
+            Les notes de terrain complètent les chiffres : contexte du match, attitude, ce qui ne se mesure pas.
+          </EmptyState>
+        ) : (
+          <ol className="relative space-y-4 border-l border-line pl-5">
+            {notes.map((note) => (
+              <li key={note.id} className="relative">
+                <span className="absolute -left-[25px] top-1.5 h-2 w-2 rounded-full bg-spotlight ring-4 ring-surface" aria-hidden="true" />
+                <div className="flex flex-wrap items-baseline justify-between gap-2 text-xs text-paper/50">
+                  <span>
+                    {note.context ?? 'Sans contexte'}
+                    {note.observedAt && ` · ${new Date(note.observedAt).toLocaleDateString('fr-FR')}`}
+                  </span>
+                  {note.rating !== null && (
+                    <span className="rounded-full border border-spotlight/40 px-2 font-semibold text-spotlight">{note.rating}/10</span>
+                  )}
+                </div>
+                <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed text-paper/90">{note.body}</p>
+              </li>
+            ))}
+          </ol>
+        )}
       </div>
-    </section>
+    </div>
   );
 }
