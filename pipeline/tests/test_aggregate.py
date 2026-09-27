@@ -9,7 +9,9 @@ silence les minutes de tous les titulaires jamais remplacés — exactement
 le genre de bug que CLAUDE.md interdit de laisser passer sans test.
 """
 
-from vivier_pipeline.core.aggregate import _player_minutes, normalize_name
+import pytest
+
+from vivier_pipeline.core.aggregate import _player_minutes, lineup_team_ids, normalize_name
 from vivier_pipeline.core.positions import normalize_statsbomb_position
 
 # Horloges de période telles que dérivées des événements Half Start/Half End
@@ -132,3 +134,21 @@ def test_normalize_statsbomb_position_covers_all_statsbomb_labels() -> None:
     assert normalize_statsbomb_position("Center Attacking Midfield") == "AM"
     assert normalize_statsbomb_position("Right Wing") == "W"
     assert normalize_statsbomb_position("Left Center Forward") == "ST"
+
+
+def test_lineup_team_names_matching_the_calendar() -> None:
+    ids = {"Lens": 1, "Lille": 2}
+    assert lineup_team_ids(["Lille", "Lens"], ids) == {"Lille": 2, "Lens": 1}
+
+
+def test_lineup_team_name_differing_from_calendar_is_resolved_by_elimination() -> None:
+    """Cas réel, Ligue 1 2022/23 match 3837747."""
+    ids = {"Paris Saint-Germain": 10, "Olympique de Marseille": 20}
+    assert lineup_team_ids(["Marseille", "Paris Saint-Germain"], ids) == {
+        "Marseille": 20, "Paris Saint-Germain": 10,
+    }
+
+
+def test_two_unknown_lineup_teams_fail_explicitly() -> None:
+    with pytest.raises(ValueError):
+        lineup_team_ids(["A", "B"], {"C": 1, "D": 2})

@@ -96,12 +96,37 @@ def _player_minutes(
     return total
 
 
+def lineup_team_ids(lineup_teams: list[str], team_ids: dict[str, int]) -> dict[str, int]:
+    """Nom d'équipe des compositions -> identifiant d'équipe du match.
+
+    Piège StatsBomb Open Data : le nom d'une équipe peut différer entre le
+    calendrier et les compositions d'un même match (Ligue 1 2022/23, match
+    3837747 : « Olympique de Marseille » contre « Marseille »). Une
+    composition contient toujours exactement les deux équipes du match : un
+    seul nom inconnu face à un seul identifiant restant se résout par
+    élimination. Au-delà, échec explicite plutôt qu'une attribution devinée.
+    """
+    resolved = {name: team_ids[name] for name in lineup_teams if name in team_ids}
+    unknown = [name for name in lineup_teams if name not in team_ids]
+    remaining = [tid for tid in team_ids.values() if tid not in resolved.values()]
+    if unknown:
+        if len(unknown) != 1 or len(remaining) != 1:
+            raise ValueError(
+                f"Équipes des compositions {lineup_teams} irréconciliables avec le "
+                f"calendrier {list(team_ids)}"
+            )
+        resolved[unknown[0]] = remaining[0]
+    return resolved
+
+
 def _lineup_rows(
     lineups: dict[str, pd.DataFrame], team_ids: dict[str, int], events: pd.DataFrame,
 ) -> pd.DataFrame:
     period_start = _period_clocks(events, "Half Start")
     period_end = _period_clocks(events, "Half End")
     match_last_period = min(int(events["period"].max()), 4)
+    lineup_ids = lineup_team_ids(list(lineups), team_ids)
+    team_names = {tid: name for name, tid in team_ids.items()}
 
     rows = []
     for team_name, df in lineups.items():
@@ -115,8 +140,8 @@ def _lineup_rows(
                 "player_id": player["player_id"],
                 "player_name": player["player_name"],
                 "country": player["country"],
-                "team_id": team_ids[team_name],
-                "team_name": team_name,
+                "team_id": lineup_ids[team_name],
+                "team_name": team_names[lineup_ids[team_name]],
                 "position": player["positions"][0]["position"],
                 "minutes": minutes,
             })
