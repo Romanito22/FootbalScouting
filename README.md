@@ -114,6 +114,10 @@ en bas de la barre latérale montre la tâche en cours, l'âge des données et l
 dernier échec ; quand un cycle se termine, la page ouverte se recharge seule
 avec les nouveaux chiffres.
 
+Une seule tâche à la fois : une ingestion lancée à la main pendant un cycle
+`live` attend la fin de celui-ci (verrou Postgres) au lieu de résoudre les
+mêmes joueurs en parallèle.
+
 ## Écrans
 
 | Écran | Rôle |
