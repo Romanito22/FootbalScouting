@@ -47,6 +47,11 @@ def outfield_metric_keys() -> set[str]:
     return {m["key"] for m in load_registry()["metrics"] if "GK" not in m["appliesTo"]}
 
 
+def gk_metric_keys() -> set[str]:
+    """Jeu de métriques gardien, séparé de celui des joueurs de champ."""
+    return {m["key"] for m in load_registry()["metrics"] if "GK" in m["appliesTo"]}
+
+
 def metric_direction() -> dict[str, bool]:
     """key -> higherIsBetter, pour orienter le sens du classement en percentile."""
     return {m["key"]: m["higherIsBetter"] for m in load_registry()["metrics"]}

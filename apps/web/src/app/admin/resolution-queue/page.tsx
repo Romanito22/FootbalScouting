@@ -1,6 +1,6 @@
 import { inArray, isNull } from 'drizzle-orm';
 import { db, players, resolutionQueue } from '@vivier/db';
-import { OUTFIELD_POSITION_GROUPS, POSITION_GROUP_LABELS } from '@vivier/metrics';
+import { POSITION_GROUP_LABELS, POSITION_GROUPS } from '@vivier/metrics';
 import { attachToExistingPlayer, createNewPlayer } from './actions';
 
 export default async function ResolutionQueuePage() {
@@ -66,7 +66,7 @@ export default async function ResolutionQueuePage() {
               className="border border-paper/30 bg-ink px-2 py-1 text-sm text-paper"
             >
               <option value="">Poste…</option>
-              {OUTFIELD_POSITION_GROUPS.map((pg) => (
+              {POSITION_GROUPS.map((pg) => (
                 <option key={pg} value={pg}>{POSITION_GROUP_LABELS[pg]}</option>
               ))}
             </select>

@@ -5,24 +5,18 @@ import {
   clubs, competitions, db, players, playerSeasonStats, shortlists,
 } from '@vivier/db';
 import {
-  METRICS, MIN_MINUTES, PEER_GROUP_SEASON_SPAN, POSITION_GROUP_LABELS,
+  getMetric, MIN_MINUTES, metricsForPosition, PEER_GROUP_SEASON_SPAN, POSITION_GROUP_LABELS,
+  RADAR_METRICS,
 } from '@vivier/metrics';
 import { PercentileRadar } from '@/components/PercentileRadar';
-import { formatMetricValue } from '@/lib/format';
 import {
   describePeerGroup, fetchRowPercentiles, type MetricPercentile, statRowKey,
 } from '@/lib/percentiles';
 import { addPlayerToShortlist } from '@/app/shortlists/actions';
 import { fetchCompetitionStrengths, referenceOf } from '@/lib/strength';
 import { AdjustedSection, LeagueStrengthLine } from './AdjustedSection';
+import { MetricsTable } from './MetricsTable';
 import { NotesSection } from './NotesSection';
-
-const RADAR_KEYS = [
-  'goals', 'xg', 'key_passes', 'xa',
-  'dribbles_completed', 'tackles_won', 'interceptions', 'ball_recoveries',
-];
-
-const METRIC_BY_KEY = new Map(METRICS.map((m) => [m.key, m]));
 
 export default async function PlayerPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -105,14 +99,12 @@ export default async function PlayerPage({ params }: { params: Promise<{ id: str
         const group = percentilesByRow.get(statRowKey(s));
         const percentileByMetric = group?.byMetric ?? new Map<string, MetricPercentile>();
 
-        const radarMetrics = RADAR_KEYS
-          .map((key) => {
-            const def = METRIC_BY_KEY.get(key);
-            const pct = percentileByMetric.get(key);
-            if (!def || !pct) return null;
-            return { key, label: def.label, percentile: pct.percentile };
-          })
-          .filter((m) => m !== null);
+        const radarMetrics = RADAR_METRICS[player.positionGroup].flatMap((key) => {
+          const def = getMetric(key);
+          const pct = percentileByMetric.get(key);
+          return def && pct ? [{ key, label: def.label, percentile: pct.percentile }] : [];
+        });
+        const positionMetrics = metricsForPosition(player.positionGroup);
 
         return (
           <section key={statRowKey(s)} className="mb-10 border-t border-paper/15 pt-6">
@@ -159,38 +151,12 @@ export default async function PlayerPage({ params }: { params: Promise<{ id: str
                   </div>
                 )}
 
-                <table className="w-full border-collapse text-sm">
-                  <thead>
-                    <tr className="border-b border-paper/20 text-left text-paper/50">
-                      <th className="py-1.5 font-normal">Métrique</th>
-                      <th className="py-1.5 text-right font-normal">Valeur</th>
-                      <th className="py-1.5 text-right font-normal">Percentile</th>
-                    </tr>
-                  </thead>
-                  <tbody className="font-mono">
-                    {METRICS.map((def) => {
-                      const pct = percentileByMetric.get(def.key);
-                      const rawValue = (s.metrics as Record<string, number>)[def.key];
-                      if (rawValue === undefined) return null;
-                      return (
-                        <tr key={def.key} className="border-b border-paper/10">
-                          <td className="py-1 font-sans text-paper/80">{def.label}</td>
-                          <td className="py-1 text-right">
-                            {formatMetricValue(rawValue, def.format)}
-                          </td>
-                          <td className="py-1 text-right text-spotlight">
-                            {pct ? `${pct.percentile}ᵉ` : '—'}
-                            {pct && group && pct.sampleSize !== group.peerGroupSampleSize && (
-                              <span className="ml-1 text-paper/40" title="Effectif réel du classement sur cette métrique (source partielle)">
-                                n={pct.sampleSize}
-                              </span>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                <MetricsTable
+                  metrics={s.metrics as Record<string, number>}
+                  definitions={positionMetrics}
+                  percentiles={percentileByMetric}
+                  groupSampleSize={group?.peerGroupSampleSize ?? null}
+                />
 
                 {(() => {
                   const competition = strengthById.get(s.competitionId);

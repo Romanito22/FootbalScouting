@@ -13,6 +13,8 @@
     "db:migrate": "pnpm --filter @vivier/db db:migrate",
     "db:studio": "pnpm --filter @vivier/db db:studio",
     "metrics:export": "pnpm --filter @vivier/metrics export",
-    "typecheck": "pnpm -r typecheck"
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test && pnpm test:pipeline",
+    "test:pipeline": "cd pipeline && uv run pytest -q"
   }
 }

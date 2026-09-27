@@ -47,10 +47,14 @@ export function PercentileRadar({
     .map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`)
     .join(' ');
 
+  // Marge latérale pour les libellés longs (« Taux de passes réussies
+  // (gardien) ») : sans elle, ils sortent du cadre à gauche et à droite.
+  const sidePad = compact ? 0 : 90;
+
   return (
     <svg
-      viewBox={`0 0 ${size} ${size}`}
-      className={compact ? 'h-16 w-16 shrink-0' : 'w-full max-w-md'}
+      viewBox={`${-sidePad} 0 ${size + 2 * sidePad} ${size}`}
+      className={compact ? 'h-16 w-16 shrink-0' : 'w-full max-w-xl'}
       role="img"
       aria-label="Radar de percentiles"
     >

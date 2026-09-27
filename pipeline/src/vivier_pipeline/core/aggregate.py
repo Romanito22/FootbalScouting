@@ -2,15 +2,23 @@
 
 Toute la période 5 (tirs au but) est exclue : ce ne sont pas des actions de
 jeu normales et elles ne comptent ni dans les minutes ni dans les stats.
-Les gardiens sont exclus : jeu de métriques séparé, pas construit ici.
+
+Deux jeux de métriques, jamais mélangés (définitions : packages/metrics) :
+joueurs de champ et gardiens. Chaque ligne reçoit exactement le jeu de son
+poste — une dérive entre ce module et le registre fait échouer l'ingestion.
+
+Géométrie StatsBomb (vérifiée sur données réelles) : terrain 120 × 80
+yards, coordonnées normalisées pour que l'équipe qui agit attaque vers
+x = 120.
 """
 
 from dataclasses import dataclass, field
 
+import numpy as np
 import pandas as pd
 
 from vivier_pipeline.core.identity import normalize_name
-from vivier_pipeline.core.metrics_registry import outfield_metric_keys
+from vivier_pipeline.core.metrics_registry import gk_metric_keys, outfield_metric_keys
 from vivier_pipeline.core.positions import normalize_statsbomb_position
 from vivier_pipeline.core.seasons import canonical_season
 
@@ -18,6 +26,26 @@ from vivier_pipeline.core.seasons import canonical_season
 YELLOW_CODES = {"Yellow Card", "Second Yellow"}
 RED_CODES = {"Red Card", "Second Yellow"}
 TACKLE_WON_OUTCOMES = {"Won", "Success In Play", "Success Out"}
+
+GOAL_X, GOAL_Y = 120.0, 40.0
+BOX_MIN_X, BOX_MIN_Y, BOX_MAX_Y = 102.0, 18.0, 62.0
+FINAL_THIRD_X = 80.0
+# Progression : au moins 25 % de la distance au but, et au moins 10 yards.
+PROGRESSIVE_SHARE = 0.25
+PROGRESSIVE_MIN_YARDS = 10.0
+SET_PIECE_PASS_TYPES = {"Throw-in", "Free Kick", "Corner", "Goal Kick", "Kick Off"}
+AERIAL_WON_COLUMNS = [
+    "pass_aerial_won", "shot_aerial_won", "clearance_aerial_won", "miscontrol_aerial_won",
+]
+
+# Événements « Goal Keeper » (types observés sur données réelles). Un but
+# contre son camp n'y figure pas : jamais imputé au gardien.
+GK_SAVE_TYPES = {
+    "Shot Saved", "Shot Saved to Post", "Penalty Saved", "Penalty Saved to Post", "Save",
+}
+GK_CONCEDED_TYPES = {"Goal Conceded", "Penalty Conceded"}
+GK_HIGH_CLAIM_TYPES = {"Collected", "Punch"}
+GK_FAILED_OUTCOMES = {"Fail"}
 
 def _parse_clock(value: str) -> float:
     minutes, seconds = value.split(":")[:2]
@@ -152,7 +180,43 @@ EVENT_COLUMNS = [
     "id", "player_id", "type", "shot_outcome", "shot_type", "shot_statsbomb_xg",
     "pass_shot_assist", "pass_goal_assist", "pass_assisted_shot_id", "dribble_outcome",
     "duel_type", "duel_outcome", "foul_committed_card", "bad_behaviour_card",
+    "location", "pass_end_location", "carry_end_location", "pass_outcome", "pass_type",
+    "ball_receipt_outcome", "goalkeeper_type", "goalkeeper_outcome", "related_events",
+    *AERIAL_WON_COLUMNS,
 ]
+
+
+def _xy(values: pd.Series) -> np.ndarray:
+    """Colonne de coordonnées [x, y] (listes) -> tableau (n, 2), NaN si absente."""
+    return np.array(
+        [v[:2] if isinstance(v, list) and len(v) >= 2 else [np.nan, np.nan] for v in values],
+        dtype=float,
+    ).reshape(-1, 2)
+
+
+def _distance_to_goal(xy: np.ndarray) -> np.ndarray:
+    return np.hypot(GOAL_X - xy[:, 0], GOAL_Y - xy[:, 1])
+
+
+def in_box(xy: np.ndarray) -> np.ndarray:
+    with np.errstate(invalid="ignore"):
+        return (xy[:, 0] >= BOX_MIN_X) & (xy[:, 1] >= BOX_MIN_Y) & (xy[:, 1] <= BOX_MAX_Y)
+
+
+def is_progressive(start: np.ndarray, end: np.ndarray) -> np.ndarray:
+    """Rapproche le ballon du but adverse d'au moins 25 % de sa distance
+    initiale ET d'au moins 10 yards (sans ce plancher, une passe de 3 yards
+    au bord de la surface serait « progressive »)."""
+    before = _distance_to_goal(start)
+    gain = before - _distance_to_goal(end)
+    with np.errstate(invalid="ignore"):
+        return (gain >= PROGRESSIVE_SHARE * before) & (gain >= PROGRESSIVE_MIN_YARDS)
+
+
+def _flag(values: pd.Series) -> pd.Series:
+    """Booléen StatsBomb -> bool. True à l'API, mais relu en 1.0/NaN depuis
+    le cache JSON local (pandas) : les deux formes doivent compter."""
+    return pd.to_numeric(values.astype(object), errors="coerce").fillna(0.0) > 0
 
 
 def _event_counts(events: pd.DataFrame) -> pd.DataFrame:
@@ -161,7 +225,7 @@ def _event_counts(events: pd.DataFrame) -> pd.DataFrame:
     # (ex. pas de carton -> pas de colonne foul_committed_card).
     for col in EVENT_COLUMNS:
         if col not in ev.columns:
-            ev[col] = pd.NA
+            ev[col] = None
 
     def count(mask: pd.Series) -> pd.Series:
         return ev.loc[mask].groupby("player_id").size()
@@ -180,6 +244,39 @@ def _event_counts(events: pd.DataFrame) -> pd.DataFrame:
     assisting_passes["assisted_xg"] = (
         assisting_passes["pass_assisted_shot_id"].map(shot_xg_by_id).fillna(0.0)
     )
+
+    # ---- passes, progression, surface ----
+    start = _xy(ev["location"])
+    is_complete_pass = is_pass & ev["pass_outcome"].isna()
+    is_throw_in = ev["pass_type"] == "Throw-in"
+    is_open_play_pass = is_pass & ~ev["pass_type"].isin(SET_PIECE_PASS_TYPES)
+    pass_end = _xy(ev["pass_end_location"])
+    carry_end = _xy(ev["carry_end_location"])
+    is_carry = ev["type"] == "Carry"
+    completed_open_play = (is_complete_pass & is_open_play_pass).to_numpy()
+    with np.errstate(invalid="ignore"):
+        into_final_third = (start[:, 0] < FINAL_THIRD_X) & (pass_end[:, 0] >= FINAL_THIRD_X)
+
+    def mask(values: np.ndarray) -> pd.Series:
+        return pd.Series(values, index=ev.index)
+
+    aerials_won_mask = pd.Series(False, index=ev.index)
+    for col in AERIAL_WON_COLUMNS:
+        aerials_won_mask |= _flag(ev[col])
+
+    # ---- gardiens ----
+    is_gk_event = ev["type"] == "Goal Keeper"
+    gk_type = ev["goalkeeper_type"]
+    gk_on_target = is_gk_event & gk_type.isin(GK_SAVE_TYPES | GK_CONCEDED_TYPES)
+    shot_xg = shot_xg_by_id.fillna(0.0).to_dict()
+    # le tir concerné est lié à l'événement gardien par related_events
+    # (vérifié : 316/316 arrêts et buts encaissés liés à leur tir)
+    faced_xg = ev.loc[gk_on_target, "related_events"].map(
+        lambda rel: max(
+            (shot_xg[r] for r in rel if r in shot_xg), default=0.0,
+        ) if isinstance(rel, list) else 0.0
+    )
+    gk_frame = ev.loc[gk_on_target, ["player_id"]].assign(xg=faced_xg)
 
     series = {
         "goals": count(is_goal),
@@ -210,13 +307,59 @@ def _event_counts(events: pd.DataFrame) -> pd.DataFrame:
             ((ev["type"] == "Foul Committed") & ev["foul_committed_card"].isin(RED_CODES))
             | ((ev["type"] == "Bad Behaviour") & ev["bad_behaviour_card"].isin(RED_CODES))
         ),
+        "passes_attempted": count(is_pass & ~is_throw_in),
+        "passes_completed": count(is_complete_pass & ~is_throw_in),
+        "passes_attempted_all": count(is_pass),
+        "passes_completed_all": count(is_complete_pass),
+        "progressive_passes": count(mask(completed_open_play & is_progressive(start, pass_end))),
+        "progressive_carries": count(mask(is_carry.to_numpy() & is_progressive(start, carry_end))),
+        "passes_into_final_third": count(mask(completed_open_play & into_final_third)),
+        "passes_into_box": count(
+            mask(completed_open_play & in_box(pass_end) & ~in_box(start))
+        ),
+        "box_receptions": count(
+            mask(
+                ((ev["type"] == "Ball Receipt*") & ev["ball_receipt_outcome"].isna()).to_numpy()
+                & in_box(start)
+            )
+        ),
+        "turnovers": count(ev["type"].isin({"Dispossessed", "Miscontrol"})),
+        "pressures": count(ev["type"] == "Pressure"),
+        "aerials_won": count(aerials_won_mask),
+        "aerials_lost": count((ev["type"] == "Duel") & (ev["duel_type"] == "Aerial Lost")),
+        "gk_saves": count(is_gk_event & gk_type.isin(GK_SAVE_TYPES)),
+        "gk_conceded": count(is_gk_event & gk_type.isin(GK_CONCEDED_TYPES)),
+        "gk_on_target_xg": gk_frame.groupby("player_id")["xg"].sum(),
+        "gk_high_claims": count(
+            is_gk_event & gk_type.isin(GK_HIGH_CLAIM_TYPES)
+            & ~ev["goalkeeper_outcome"].isin(GK_FAILED_OUTCOMES)
+        ),
+        "gk_sweeper_actions": count(is_gk_event & (gk_type == "Keeper Sweeper")),
     }
     return pd.concat(series, axis=1).fillna(0.0)
 
 
+def _rate(numerator: float, denominator: float) -> float:
+    return numerator / denominator if denominator > 0 else 0.0
+
+
+def _gk_per90_metrics(totals: pd.Series, nineties: float) -> dict[str, float]:
+    on_target = totals["gk_saves"] + totals["gk_conceded"]
+    return {
+        "gk_goals_conceded": totals["gk_conceded"] / nineties,
+        "gk_saves": totals["gk_saves"] / nineties,
+        "gk_save_rate": _rate(totals["gk_saves"], on_target),
+        "gk_goals_prevented": (totals["gk_on_target_xg"] - totals["gk_conceded"]) / nineties,
+        "gk_high_claims": totals["gk_high_claims"] / nineties,
+        "gk_sweeper_actions": totals["gk_sweeper_actions"] / nineties,
+        "gk_pass_completion_rate": _rate(
+            totals["passes_completed_all"], totals["passes_attempted_all"],
+        ),
+    }
+
+
 def _per90_metrics(totals: pd.Series, nineties: float) -> dict[str, float]:
-    def rate(numerator: float, denominator: float) -> float:
-        return numerator / denominator if denominator > 0 else 0.0
+    rate = _rate
 
     return {
         "goals": totals["goals"] / nineties,
@@ -242,6 +385,19 @@ def _per90_metrics(totals: pd.Series, nineties: float) -> dict[str, float]:
         "fouls_won": totals["fouls_won"] / nineties,
         "yellow_cards": totals["yellow_cards"] / nineties,
         "red_cards": totals["red_cards"] / nineties,
+        "progressive_passes": totals["progressive_passes"] / nineties,
+        "progressive_carries": totals["progressive_carries"] / nineties,
+        "passes_into_final_third": totals["passes_into_final_third"] / nineties,
+        "passes_into_box": totals["passes_into_box"] / nineties,
+        "passes_completed": totals["passes_completed"] / nineties,
+        "pass_completion_rate": rate(totals["passes_completed"], totals["passes_attempted"]),
+        "box_receptions": totals["box_receptions"] / nineties,
+        "turnovers": totals["turnovers"] / nineties,
+        "pressures": totals["pressures"] / nineties,
+        "aerials_won": totals["aerials_won"] / nineties,
+        "aerial_win_rate": rate(
+            totals["aerials_won"], totals["aerials_won"] + totals["aerials_lost"],
+        ),
     }
 
 
@@ -254,7 +410,7 @@ def aggregate_competition(
     """`is_international` (competitions.json de StatsBomb) : sélections
     nationales (Coupe du monde, Euro...) ou clubs (championnats, Ligue des
     champions...). Détermine `clubs.is_national_team` et le pays du club."""
-    expected_keys = outfield_metric_keys()
+    expected_keys = {"outfield": outfield_metric_keys(), "gk": gk_metric_keys()}
 
     first = matches.iloc[0]
     result = CompetitionAggregation(competition={
@@ -325,13 +481,15 @@ def aggregate_competition(
             continue
         info = identity.loc[raw_player_id]
         position_group = normalize_statsbomb_position(info["position"])
-        if position_group == "GK":
-            continue
-
-        metrics = _per90_metrics(total_row, nineties)
-        if set(metrics) != expected_keys:
+        metric_set = "gk" if position_group == "GK" else "outfield"
+        metrics = (
+            _gk_per90_metrics(total_row, nineties) if metric_set == "gk"
+            else _per90_metrics(total_row, nineties)
+        )
+        if set(metrics) != expected_keys[metric_set]:
             raise ValueError(
-                f"Dérive du catalogue de métriques : {set(metrics) ^ expected_keys}"
+                f"Dérive du catalogue de métriques ({metric_set}) : "
+                f"{set(metrics) ^ expected_keys[metric_set]}"
             )
 
         result.players[player_id] = {

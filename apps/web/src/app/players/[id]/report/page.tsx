@@ -5,7 +5,7 @@ import {
   shortlistEntries, shortlists,
 } from '@vivier/db';
 import {
-  METRICS, MIN_MINUTES, PEER_GROUP_SEASON_SPAN, POSITION_GROUP_LABELS,
+  getMetric, MIN_MINUTES, PEER_GROUP_SEASON_SPAN, POSITION_GROUP_LABELS, RADAR_METRICS,
 } from '@vivier/metrics';
 import { PercentileRadar } from '@/components/PercentileRadar';
 import { describePeerGroup, fetchRowPercentiles, statRowKey } from '@/lib/percentiles';
@@ -14,11 +14,6 @@ import { fetchCompetitionStrengths, referenceOf } from '@/lib/strength';
 import { LeagueStrengthLine } from '../AdjustedSection';
 import { PrintButton } from './PrintButton';
 
-const RADAR_KEYS = [
-  'goals', 'xg', 'key_passes', 'xa',
-  'dribbles_completed', 'tackles_won', 'interceptions', 'ball_recoveries',
-];
-const METRIC_BY_KEY = new Map(METRICS.map((m) => [m.key, m]));
 const STATUS_LABELS: Record<string, string> = {
   a_observer: 'À observer', observe: 'Observé', prioritaire: 'Prioritaire', ecarte: 'Écarté',
 };
@@ -64,18 +59,15 @@ export default async function PlayerReportPage({ params }: { params: Promise<{ i
     ? strengths.find((c) => c.id === latestSeason.competitionId)
     : undefined;
 
-  const radarMetrics = RADAR_KEYS
-    .map((key) => {
-      const def = METRIC_BY_KEY.get(key);
-      const pct = group?.byMetric.get(key);
-      if (!def || !pct) return null;
-      return { key, label: def.label, percentile: pct.percentile };
-    })
-    .filter((m) => m !== null);
+  const radarMetrics = RADAR_METRICS[player.positionGroup].flatMap((key) => {
+    const def = getMetric(key);
+    const pct = group?.byMetric.get(key);
+    return def && pct ? [{ key, label: def.label, percentile: pct.percentile }] : [];
+  });
 
   const vector = await latestVector(playerId);
   const comparables = vector?.styleVec
-    ? await topSimilar(playerVectors.styleVec, vector.styleVec, playerId, 5)
+    ? await topSimilar(playerVectors.styleVec, vector.styleVec, playerId, 5, player.positionGroup === 'GK')
     : [];
 
   const notes = await db

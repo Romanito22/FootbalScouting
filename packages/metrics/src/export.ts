@@ -1,21 +1,10 @@
 import { writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import {
-  LEAGUE_STRENGTH, MIN_MINUTES, PEER_GROUP_SEASON_SPAN, POSITION_GROUP_LABELS, POSITION_GROUPS,
-} from './constants';
+import { serializeRegistryPayload } from './payload';
 import { METRICS } from './registry';
 
-const outPath = resolve(import.meta.dirname, '../../../pipeline/metrics.json');
+export const EXPORT_PATH = resolve(import.meta.dirname, '../../../pipeline/metrics.json');
 
-const payload = {
-  minMinutes: MIN_MINUTES,
-  peerGroupSeasonSpan: PEER_GROUP_SEASON_SPAN,
-  leagueStrength: LEAGUE_STRENGTH,
-  positionGroups: POSITION_GROUPS,
-  positionGroupLabels: POSITION_GROUP_LABELS,
-  metrics: METRICS,
-};
+writeFileSync(EXPORT_PATH, serializeRegistryPayload());
 
-writeFileSync(outPath, `${JSON.stringify(payload, null, 2)}\n`);
-
-console.log(`✓ ${METRICS.length} métrique(s) exportée(s) vers ${outPath}`);
+console.log(`✓ ${METRICS.length} métrique(s) exportée(s) vers ${EXPORT_PATH}`);

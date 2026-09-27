@@ -2,6 +2,8 @@ import { type AnyColumn, and, desc, eq, ne, sql } from 'drizzle-orm';
 import { cosineDistance } from 'drizzle-orm/sql/functions/vector';
 import { db, players, playerVectors } from '@vivier/db';
 
+const HNSW_EF_SEARCH = 400;
+
 export interface SimilarRow {
   playerId: number;
   fullName: string;
@@ -29,21 +31,38 @@ export async function latestVector(playerId: number) {
  */
 export async function topSimilar(
   column: AnyColumn, targetVec: number[], excludePlayerId: number, limit: number,
+  targetIsGoalkeeper: boolean,
 ): Promise<SimilarRow[]> {
   const distance = cosineDistance(column, targetVec);
-  const candidates = await db
-    .select({
-      playerId: players.id,
-      fullName: players.fullName,
-      positionGroup: players.positionGroup,
-      season: playerVectors.season,
-      similarity: sql<number>`1 - (${distance})`,
-    })
-    .from(playerVectors)
-    .innerJoin(players, eq(players.id, playerVectors.playerId))
-    .where(and(ne(playerVectors.playerId, excludePlayerId), sql`${column} IS NOT NULL`))
-    .orderBy(distance)
-    .limit(limit * 4);
+  // Gardiens et joueurs de champ vivent dans deux espaces vectoriels
+  // distincts (métriques disjointes) : une similarité entre eux n'a pas de sens.
+  const sameMetricSet = targetIsGoalkeeper
+    ? eq(players.positionGroup, 'GK')
+    : ne(players.positionGroup, 'GK');
+  // L'index HNSW filtre APRÈS avoir retenu ses ef_search plus proches
+  // voisins (40 par défaut) : avec le filtre gardien / champ, un gardien
+  // n'aurait que quelques voisins valides. Bassin élargi, le temps de la
+  // requête (SET LOCAL, supporté par toutes les versions de pgvector).
+  const candidates = await db.transaction(async (tx) => {
+    await tx.execute(sql`SET LOCAL hnsw.ef_search = ${sql.raw(String(HNSW_EF_SEARCH))}`);
+    return tx
+      .select({
+        playerId: players.id,
+        fullName: players.fullName,
+        positionGroup: players.positionGroup,
+        season: playerVectors.season,
+        similarity: sql<number>`1 - (${distance})`,
+      })
+      .from(playerVectors)
+      .innerJoin(players, eq(players.id, playerVectors.playerId))
+      .where(and(
+        ne(playerVectors.playerId, excludePlayerId),
+        sql`${column} IS NOT NULL`,
+        sameMetricSet,
+      ))
+      .orderBy(distance)
+      .limit(limit * 4);
+  });
 
   const seen = new Set<number>();
   const result: SimilarRow[] = [];

@@ -1,4 +1,4 @@
-import { OUTFIELD_POSITION_GROUPS, type PositionGroup } from '@vivier/metrics';
+import { type PositionGroup, POSITION_GROUPS } from '@vivier/metrics';
 
 export interface SearchFilters {
   positions: PositionGroup[];
@@ -48,7 +48,7 @@ export function parseSearchFilters(searchParams: RawSearchParams): SearchFilters
     ? positionsValue
     : (positionsValue?.split(',') ?? []);
   const positions = positionsRaw.filter(
-    (p): p is PositionGroup => (OUTFIELD_POSITION_GROUPS as readonly string[]).includes(p),
+    (p): p is PositionGroup => (POSITION_GROUPS as readonly string[]).includes(p),
   );
   const foot = first(searchParams.foot);
   const scope = first(searchParams.percentileScope);

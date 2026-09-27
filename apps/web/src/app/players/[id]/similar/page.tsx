@@ -50,12 +50,12 @@ export default async function SimilarPlayersPage({ params }: { params: Promise<{
             <SimilarList
               title="Similaires en style"
               subtitle="joue comme lui"
-              rows={await topSimilar(playerVectors.styleVec, target.styleVec, playerId, RESULT_LIMIT)}
+              rows={await topSimilar(playerVectors.styleVec, target.styleVec, playerId, RESULT_LIMIT, player.positionGroup === 'GK')}
             />
             <SimilarList
               title="Similaires en niveau"
               subtitle="aussi bon que lui"
-              rows={await topSimilar(playerVectors.qualityVec, target.qualityVec, playerId, RESULT_LIMIT)}
+              rows={await topSimilar(playerVectors.qualityVec, target.qualityVec, playerId, RESULT_LIMIT, player.positionGroup === 'GK')}
             />
           </div>
         </>

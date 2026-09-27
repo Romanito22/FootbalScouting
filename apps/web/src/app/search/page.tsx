@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { METRICS, MIN_MINUTES, OUTFIELD_POSITION_GROUPS, POSITION_GROUP_LABELS } from '@vivier/metrics';
+import { METRICS, MIN_MINUTES, POSITION_GROUP_LABELS, POSITION_GROUPS } from '@vivier/metrics';
 import { PercentileRadar } from '@/components/PercentileRadar';
 import { parseSearchFilters } from '@/lib/searchFilters';
 import { statRowKey } from '@/lib/percentiles';
@@ -28,7 +28,7 @@ export default async function SearchPage({
         <fieldset className="col-span-2 sm:col-span-4">
           <legend className="mb-1 text-xs text-paper/50">Poste</legend>
           <div className="flex flex-wrap gap-3">
-            {OUTFIELD_POSITION_GROUPS.map((pg) => (
+            {POSITION_GROUPS.map((pg) => (
               <label key={pg} className="flex items-center gap-1 text-sm text-paper">
                 <input
                   type="checkbox"
@@ -135,7 +135,7 @@ export default async function SearchPage({
                   {row.fullName}
                 </Link>
               </td>
-              <td className="py-1.5">{POSITION_GROUP_LABELS[row.positionGroup as keyof typeof POSITION_GROUP_LABELS]}</td>
+              <td className="py-1.5">{POSITION_GROUP_LABELS[row.positionGroup]}</td>
               <td className="py-1.5 font-sans">{row.clubName}</td>
               <td className="py-1.5">{row.season}</td>
               <td className="py-1.5 text-right">{row.minutes}</td>

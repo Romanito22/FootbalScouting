@@ -2,18 +2,22 @@ import { and, desc, eq, gte, inArray, lte, sql } from 'drizzle-orm';
 import {
   clubs, competitions, db, peerGroups, playerPercentiles, players, playerSeasonStats,
 } from '@vivier/db';
-import { METRICS } from '@vivier/metrics';
+import {
+  COMPACT_RADAR_SIZE, getMetric, type PositionGroup, POSITION_GROUPS, RADAR_METRICS,
+} from '@vivier/metrics';
 import { fetchRowPercentiles, statRowKey } from './percentiles';
 import type { SearchFilters } from './searchFilters';
 
-export const ROW_RADAR_KEYS = [
-  'goals', 'xg', 'key_passes', 'dribbles_completed', 'tackles_won', 'interceptions',
-];
+/** Mini-radar d'une ligne : les premiers axes du radar de son poste. */
+function compactRadarKeys(position: PositionGroup): readonly string[] {
+  return RADAR_METRICS[position].slice(0, COMPACT_RADAR_SIZE);
+}
+const ALL_COMPACT_KEYS = [...new Set(POSITION_GROUPS.flatMap((p) => compactRadarKeys(p)))];
 
 export interface SearchResultRow {
   playerId: number;
   fullName: string;
-  positionGroup: string;
+  positionGroup: PositionGroup;
   season: string;
   competitionId: number;
   clubId: number;
@@ -25,7 +29,6 @@ export interface SearchResultRow {
 }
 
 const RESULT_LIMIT = 200;
-const METRIC_LABELS = new Map(METRICS.map((m) => [m.key, m.label]));
 
 export interface RowRadar {
   metrics: { key: string; label: string; percentile: number }[];
@@ -94,7 +97,7 @@ export async function runSearch(filters: SearchFilters): Promise<{
     .limit(RESULT_LIMIT);
 
   const percentilesByRow = await fetchRowPercentiles(
-    [...new Set(rows.map((r) => r.playerId))], ROW_RADAR_KEYS,
+    [...new Set(rows.map((r) => r.playerId))], ALL_COMPACT_KEYS,
   );
   const radarByRow = new Map<string, RowRadar>();
   for (const row of rows) {
@@ -102,9 +105,11 @@ export async function runSearch(filters: SearchFilters): Promise<{
     const group = percentilesByRow.get(key);
     if (!group) continue;
     radarByRow.set(key, {
-      metrics: ROW_RADAR_KEYS.flatMap((metric) => {
+      metrics: compactRadarKeys(row.positionGroup).flatMap((metric) => {
         const pct = group.byMetric.get(metric);
-        return pct ? [{ key: metric, label: METRIC_LABELS.get(metric) ?? metric, percentile: pct.percentile }] : [];
+        return pct
+          ? [{ key: metric, label: getMetric(metric)?.label ?? metric, percentile: pct.percentile }]
+          : [];
       }),
       peerGroupLabel: group.peerGroupLabel,
       peerGroupSampleSize: group.peerGroupSampleSize,
