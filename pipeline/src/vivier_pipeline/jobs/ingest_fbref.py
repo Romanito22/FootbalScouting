@@ -3,7 +3,7 @@ championnats/saisons demandés.
 
 Usage :
     uv run python -m vivier_pipeline.jobs.ingest_fbref \\
-        --leagues ENG-Premier-League --seasons 2223
+        --leagues "ENG-Premier League" --seasons 2223
 """
 
 import argparse

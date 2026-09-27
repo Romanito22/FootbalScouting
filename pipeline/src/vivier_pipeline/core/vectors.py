@@ -87,6 +87,21 @@ def _scale_within_group(values: pd.DataFrame, group: pd.Series) -> pd.DataFrame:
     return values / stds
 
 
+def _impute_missing(
+    metrics_df: pd.DataFrame, percentiles_df: pd.DataFrame, group: pd.Series,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Une source peut ne pas fournir toutes les métriques (FBref n'en
+    couvre qu'une partie). Une valeur manquante devient « comme le joueur
+    médian de son poste » : médiane du groupe de poste pour le style, 50ᵉ
+    percentile pour la qualité. Neutre par construction — la similarité se
+    décide alors sur les métriques réellement mesurées, sans qu'un trou de
+    donnée ne se lise comme une absence d'action (0) ni ne fasse échouer la
+    réduction SVD (NaN). Métrique absente de tout un groupe : 0 (sans
+    effet après mise à l'échelle)."""
+    medians = metrics_df.groupby(group).transform("median")
+    return metrics_df.fillna(medians).fillna(0.0), percentiles_df.fillna(50.0)
+
+
 def _l2_normalize_rows(matrix: np.ndarray) -> np.ndarray:
     norms = np.linalg.norm(matrix, axis=1, keepdims=True)
     return np.divide(matrix, norms, out=np.zeros_like(matrix), where=norms > 0)
@@ -121,8 +136,11 @@ def compute_vectors(
         return []
 
     df = rows.reset_index(drop=True)
-    metrics_df = pd.json_normalize(df["metrics"])[metric_keys]
-    percentiles_df = pd.json_normalize(df["percentiles"])[metric_keys]
+    metrics_df, percentiles_df = _impute_missing(
+        pd.json_normalize(df["metrics"].tolist()).reindex(columns=metric_keys).astype(float),
+        pd.json_normalize(df["percentiles"].tolist()).reindex(columns=metric_keys).astype(float),
+        df["position_group"],
+    )
 
     harmonized = _harmonized_metrics(
         pd.concat([df[["position_group"]], metrics_df], axis=1), metric_keys, metric_direction,

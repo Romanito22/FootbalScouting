@@ -76,3 +76,13 @@ def test_normalize_row_missing_cards_default_to_zero_per90() -> None:
     record = normalize_row(INDEX, _row({("Performance", "CrdR"): float("nan")}))
     assert record is not None
     assert record["metrics"]["red_cards"] == 0.0
+
+
+def test_normalize_row_converts_soccerdata_season_code_to_canonical() -> None:
+    """soccerdata indexe les saisons par code compact ('2223') : sans
+    conversion, parse_season_year y lirait l'année 2223 et la saison ne
+    rejoindrait jamais son groupe de pairs."""
+    record = normalize_row(("FRA-Ligue 1", "2223", "Paris SG", "Kylian Mbappé"), _row())
+    assert record is not None
+    assert record["season"] == "2022-2023"
+    assert record["source_id"] == "FRA-Ligue 1|2022-2023|Paris SG|kylian mbappe"

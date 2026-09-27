@@ -1,28 +1,11 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { type AnyColumn, and, eq, ne, sql } from 'drizzle-orm';
-import { cosineDistance } from 'drizzle-orm/sql/functions/vector';
+import { eq } from 'drizzle-orm';
 import { db, players, playerVectors } from '@vivier/db';
 import { MIN_MINUTES } from '@vivier/metrics';
+import { latestVector, type SimilarRow, topSimilar } from '@/lib/similarity';
 
 const RESULT_LIMIT = 10;
-
-async function topSimilar(column: AnyColumn, targetVec: number[], excludeId: number) {
-  const distance = cosineDistance(column, targetVec);
-  return db
-    .select({
-      playerId: players.id,
-      fullName: players.fullName,
-      positionGroup: players.positionGroup,
-      season: playerVectors.season,
-      similarity: sql<number>`1 - (${distance})`,
-    })
-    .from(playerVectors)
-    .innerJoin(players, eq(players.id, playerVectors.playerId))
-    .where(and(ne(playerVectors.playerId, excludeId), sql`${column} IS NOT NULL`))
-    .orderBy(distance)
-    .limit(RESULT_LIMIT);
-}
 
 export default async function SimilarPlayersPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -32,12 +15,7 @@ export default async function SimilarPlayersPage({ params }: { params: Promise<{
   const [player] = await db.select().from(players).where(eq(players.id, playerId));
   if (!player) notFound();
 
-  const [target] = await db
-    .select()
-    .from(playerVectors)
-    .where(eq(playerVectors.playerId, playerId))
-    .orderBy(playerVectors.season)
-    .limit(1);
+  const target = await latestVector(playerId);
 
   return (
     <main className="mx-auto max-w-4xl px-6 py-10">
@@ -59,6 +37,9 @@ export default async function SimilarPlayersPage({ params }: { params: Promise<{
         </p>
       ) : (
         <>
+          <p className="mb-2 font-mono text-xs text-paper/50">
+            Référence : saison {target.season} (la plus récente avec vecteur)
+          </p>
           <p className="mb-8 rounded-sm border border-spotlight/40 bg-spotlight/10 px-3 py-2 text-sm text-spotlight">
             Base actuelle réduite (une poignée de joueurs par groupe de pairs) : les similarités
             ci-dessous sont honnêtes mais peu discriminantes tant que la base ne grossit pas —
@@ -69,12 +50,12 @@ export default async function SimilarPlayersPage({ params }: { params: Promise<{
             <SimilarList
               title="Similaires en style"
               subtitle="joue comme lui"
-              rows={await topSimilar(playerVectors.styleVec, target.styleVec, playerId)}
+              rows={await topSimilar(playerVectors.styleVec, target.styleVec, playerId, RESULT_LIMIT)}
             />
             <SimilarList
               title="Similaires en niveau"
               subtitle="aussi bon que lui"
-              rows={await topSimilar(playerVectors.qualityVec, target.qualityVec, playerId)}
+              rows={await topSimilar(playerVectors.qualityVec, target.qualityVec, playerId, RESULT_LIMIT)}
             />
           </div>
         </>
@@ -88,7 +69,7 @@ function SimilarList({
 }: {
   title: string;
   subtitle: string;
-  rows: { playerId: number; fullName: string; positionGroup: string; season: string; similarity: number }[];
+  rows: SimilarRow[];
 }) {
   return (
     <section>
@@ -100,6 +81,7 @@ function SimilarList({
             <span className="font-mono text-paper/40">{i + 1}.</span>
             <Link href={`/players/${row.playerId}`} className="flex-1 px-2 font-sans text-paper hover:text-spotlight">
               {row.fullName}
+              <span className="ml-2 font-mono text-xs text-paper/40">{row.season}</span>
             </Link>
             <span className="font-mono text-xs text-spotlight">
               {(row.similarity * 100).toFixed(0)} %

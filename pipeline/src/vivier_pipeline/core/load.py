@@ -27,11 +27,27 @@ def upsert_competition(conn: psycopg.Connection, comp: dict) -> int:
 
 
 def upsert_club(conn: psycopg.Connection, club: dict, competition_id: int) -> int:
+    """Identifiant d'équipe StatsBomb d'abord (stable entre compétitions),
+    puis nom normalisé à statut identique (une sélection nationale et un
+    club homonyme ne sont jamais fusionnés)."""
     existing = conn.execute(
-        "SELECT id FROM clubs WHERE normalized_name = %s AND is_national_team = true",
-        (club["normalized_name"],),
+        """
+        SELECT id FROM clubs
+        WHERE source_ids->>'statsbomb_team' = %s
+           OR (normalized_name = %s AND is_national_team = %s)
+        ORDER BY (source_ids->>'statsbomb_team' = %s) DESC NULLS LAST
+        LIMIT 1
+        """,
+        (
+            club["source_ids"]["statsbomb_team"], club["normalized_name"],
+            club["is_national_team"], club["source_ids"]["statsbomb_team"],
+        ),
     ).fetchone()
     if existing:
+        conn.execute(
+            "UPDATE clubs SET source_ids = source_ids || %s WHERE id = %s",
+            (json.dumps(club["source_ids"]), existing[0]),
+        )
         return existing[0]
     row = conn.execute(
         """
@@ -48,7 +64,14 @@ def upsert_club(conn: psycopg.Connection, club: dict, competition_id: int) -> in
     return row[0]
 
 
-def upsert_player(conn: psycopg.Connection, statsbomb_id: int, player: dict) -> int:
+def upsert_player(
+    conn: psycopg.Connection, statsbomb_id: int, player: dict, season: str,
+) -> int:
+    """Le poste d'un joueur déjà connu n'est mis à jour que par une saison au
+    moins aussi récente que toutes celles déjà en base : les compétitions
+    s'ingèrent dans n'importe quel ordre, et sans cette garde, ingérer une
+    vieille compétition après une récente réécrirait son poste actuel (donc
+    son groupe de pairs) avec celui d'il y a trois ans."""
     alias = conn.execute(
         "SELECT player_id FROM player_aliases WHERE source = 'statsbomb' AND source_id = %s",
         (str(statsbomb_id),),
@@ -58,12 +81,19 @@ def upsert_player(conn: psycopg.Connection, statsbomb_id: int, player: dict) -> 
         conn.execute(
             """
             UPDATE players SET
-                position_group = %(position_group)s,
+                position_group = CASE
+                    WHEN NOT EXISTS (
+                        SELECT 1 FROM player_season_stats pss
+                        WHERE pss.player_id = players.id
+                          AND left(pss.season, 4)::int > left(%(season)s, 4)::int
+                    ) THEN %(position_group)s::position_group
+                    ELSE position_group
+                END,
                 nationality = %(nationality)s,
                 updated_at = now()
             WHERE id = %(id)s
             """,
-            {**player, "id": player_id},
+            {**player, "id": player_id, "season": season},
         )
         return player_id
 
@@ -126,10 +156,11 @@ def load_competition(conn: psycopg.Connection, agg: CompetitionAggregation) -> i
         for team_id, club in agg.clubs.items()
     }
 
+    stats_by_player = {s["player_id"]: s for s in agg.season_stats}
     rows_written = 0
     for statsbomb_player_id, player in agg.players.items():
-        player_id = upsert_player(conn, statsbomb_player_id, player)
-        stat = next(s for s in agg.season_stats if s["player_id"] == statsbomb_player_id)
+        stat = stats_by_player[statsbomb_player_id]
+        player_id = upsert_player(conn, statsbomb_player_id, player, stat["season"])
         club_id = club_ids[stat["team_id"]]
         upsert_season_stats(conn, player_id, competition_id, club_id, stat)
         rows_written += 1
@@ -140,7 +171,8 @@ def load_competition(conn: psycopg.Connection, agg: CompetitionAggregation) -> i
 def fetch_percentile_input(conn: psycopg.Connection, min_minutes: int) -> pd.DataFrame:
     rows = conn.execute(
         """
-        SELECT pss.player_id, pss.season, p.position_group, c.tier, pss.metrics
+        SELECT pss.player_id, pss.season, p.position_group, c.tier,
+               pss.competition_id, pss.club_id, pss.minutes, pss.metrics
         FROM player_season_stats pss
         JOIN players p ON p.id = pss.player_id
         JOIN competitions c ON c.id = pss.competition_id
@@ -149,7 +181,11 @@ def fetch_percentile_input(conn: psycopg.Connection, min_minutes: int) -> pd.Dat
         (min_minutes,),
     ).fetchall()
     return pd.DataFrame(
-        rows, columns=["player_id", "season", "position_group", "tier", "metrics"],
+        rows,
+        columns=[
+            "player_id", "season", "position_group", "tier",
+            "competition_id", "club_id", "minutes", "metrics",
+        ],
     )
 
 
@@ -161,11 +197,12 @@ def replace_percentiles(conn: psycopg.Connection, groups: list[PeerGroupResult])
     for group in groups:
         conn.execute(
             """
-            INSERT INTO peer_groups (id, label, position_group, season, min_minutes, sample_size)
-            VALUES (%s, %s, %s, %s, %s, %s)
+            INSERT INTO peer_groups
+                (id, label, position_group, tier, season, min_minutes, sample_size)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
             """,
             (
-                group.peer_group_id, group.label, group.position_group,
+                group.peer_group_id, group.label, group.position_group, group.tier,
                 group.season, group.min_minutes, group.sample_size,
             ),
         )
@@ -176,9 +213,11 @@ def replace_percentiles(conn: psycopg.Connection, groups: list[PeerGroupResult])
             cur.executemany(
                 """
                 INSERT INTO player_percentiles
-                    (player_id, season, peer_group_id, metric, raw_value, percentile)
+                    (player_id, season, peer_group_id, metric, raw_value, percentile,
+                     competition_id, club_id, sample_size)
                 VALUES (%(player_id)s, %(season)s, %(peer_group_id)s,
-                        %(metric)s, %(raw_value)s, %(percentile)s)
+                        %(metric)s, %(raw_value)s, %(percentile)s,
+                        %(competition_id)s, %(club_id)s, %(sample_size)s)
                 """,
                 [{**p, "peer_group_id": group.peer_group_id} for p in group.percentiles],
             )

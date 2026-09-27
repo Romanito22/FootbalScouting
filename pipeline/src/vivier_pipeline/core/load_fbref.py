@@ -13,32 +13,44 @@ from unidecode import unidecode
 from vivier_pipeline.core.identity import IdentityCandidate, IdentityQuery
 from vivier_pipeline.core.resolve import resolve_or_queue
 
-# Paliers connus. Un championnat absent d'ici fait échouer l'ingestion
-# plutôt que de deviner son niveau — ça fausserait les groupes de pairs.
-LEAGUE_TIER: dict[str, int] = {
-    "ENG-Premier League": 1, "ESP-La Liga": 1, "GER-Bundesliga": 1,
-    "ITA-Serie A": 1, "FRA-Ligue 1": 1,
+# Championnats connus : (nom, pays, palier). Nom et pays alignés sur les
+# libellés StatsBomb pour qu'une même compétition ne soit jamais dédoublée
+# entre sources (les groupes de pairs et les coefficients de force se
+# calculent par compétition). Un championnat absent d'ici fait échouer
+# l'ingestion plutôt que de deviner son niveau — ça fausserait les groupes
+# de pairs.
+FBREF_LEAGUES: dict[str, tuple[str, str, int]] = {
+    "ENG-Premier League": ("Premier League", "England", 1),
+    "ESP-La Liga": ("La Liga", "Spain", 1),
+    "GER-Bundesliga": ("1. Bundesliga", "Germany", 1),
+    "ITA-Serie A": ("Serie A", "Italy", 1),
+    "FRA-Ligue 1": ("Ligue 1", "France", 1),
 }
 
 
-def league_tier(league: str) -> int:
+def league_info(league: str) -> tuple[str, str, int]:
     try:
-        return LEAGUE_TIER[league]
+        return FBREF_LEAGUES[league]
     except KeyError as exc:
         raise ValueError(
-            f"Palier inconnu pour le championnat {league!r} — ajoute-le à LEAGUE_TIER "
-            "après vérification manuelle."
+            f"Championnat inconnu : {league!r} — ajoute-le à FBREF_LEAGUES (nom, pays, "
+            "palier) après vérification manuelle."
         ) from exc
 
 
+def league_tier(league: str) -> int:
+    return league_info(league)[2]
+
+
 def upsert_fbref_competition(conn: psycopg.Connection, league: str) -> int:
-    country, _, name = league.partition("-")
-    tier = league_tier(league)
+    name, country, tier = league_info(league)
     row = conn.execute(
         """
         INSERT INTO competitions (name, country, tier, source_ids)
         VALUES (%s, %s, %s, %s)
-        ON CONFLICT (name, country) DO UPDATE SET tier = EXCLUDED.tier
+        ON CONFLICT (name, country) DO UPDATE SET
+            tier = EXCLUDED.tier,
+            source_ids = competitions.source_ids || EXCLUDED.source_ids
         RETURNING id
         """,
         (name, country, tier, json.dumps({"fbref": league})),
@@ -95,7 +107,9 @@ def upsert_fbref_season_stats(
         ON CONFLICT (player_id, season, competition_id, club_id) DO UPDATE SET
             minutes = EXCLUDED.minutes,
             matches_played = EXCLUDED.matches_played,
-            metrics = EXCLUDED.metrics,
+            -- fusion, pas remplacement : FBref ne couvre qu'une partie du
+            -- catalogue, les métriques d'une autre source restent en place
+            metrics = player_season_stats.metrics || EXCLUDED.metrics,
             source = 'fbref',
             ingested_at = now()
         """,

@@ -1,13 +1,15 @@
 import { notFound } from 'next/navigation';
-import { and, desc, eq, ne, sql } from 'drizzle-orm';
-import { cosineDistance } from 'drizzle-orm/sql/functions/vector';
+import { desc, eq } from 'drizzle-orm';
 import {
-  clubs, competitions, db, peerGroups, playerPercentiles, players, playerSeasonStats,
-  playerVectors, scoutNotes, shortlistEntries, shortlists,
+  clubs, competitions, db, players, playerSeasonStats, playerVectors, scoutNotes,
+  shortlistEntries, shortlists,
 } from '@vivier/db';
-import { METRICS, MIN_MINUTES, POSITION_GROUP_LABELS } from '@vivier/metrics';
+import {
+  METRICS, MIN_MINUTES, PEER_GROUP_SEASON_SPAN, POSITION_GROUP_LABELS,
+} from '@vivier/metrics';
 import { PercentileRadar } from '@/components/PercentileRadar';
-import { formatMetricValue } from '@/lib/format';
+import { describePeerGroup, fetchRowPercentiles, statRowKey } from '@/lib/percentiles';
+import { latestVector, topSimilar } from '@/lib/similarity';
 import { PrintButton } from './PrintButton';
 
 const RADAR_KEYS = [
@@ -27,9 +29,12 @@ export default async function PlayerReportPage({ params }: { params: Promise<{ i
   const [player] = await db.select().from(players).where(eq(players.id, playerId));
   if (!player) notFound();
 
-  const [latestSeason] = await db
+  const seasonRows = await db
     .select({
+      playerId: playerSeasonStats.playerId,
       season: playerSeasonStats.season,
+      competitionId: playerSeasonStats.competitionId,
+      clubId: playerSeasonStats.clubId,
       minutes: playerSeasonStats.minutes,
       matchesPlayed: playerSeasonStats.matchesPlayed,
       metrics: playerSeasonStats.metrics,
@@ -40,46 +45,31 @@ export default async function PlayerReportPage({ params }: { params: Promise<{ i
     .innerJoin(competitions, eq(competitions.id, playerSeasonStats.competitionId))
     .innerJoin(clubs, eq(clubs.id, playerSeasonStats.clubId))
     .where(eq(playerSeasonStats.playerId, playerId))
-    .orderBy(desc(playerSeasonStats.season))
-    .limit(1);
+    // saison la plus récente ; à saison égale, la ligne la plus fournie
+    .orderBy(desc(playerSeasonStats.season), desc(playerSeasonStats.minutes));
+  // Le rapport s'appuie sur la saison exploitable la plus récente : une
+  // saison récente sous le seuil (3 matchs d'Euro) ne doit pas masquer un
+  // échantillon complet de la saison précédente. L'écart est signalé.
+  const mostRecent = seasonRows[0];
+  const latestSeason = seasonRows.find((r) => r.minutes >= MIN_MINUTES) ?? mostRecent;
 
-  const percentiles = latestSeason
-    ? await db
-      .select({
-        metric: playerPercentiles.metric,
-        percentile: playerPercentiles.percentile,
-        peerGroupLabel: peerGroups.label,
-        peerGroupSampleSize: peerGroups.sampleSize,
-      })
-      .from(playerPercentiles)
-      .innerJoin(peerGroups, eq(peerGroups.id, playerPercentiles.peerGroupId))
-      .where(and(eq(playerPercentiles.playerId, playerId), eq(playerPercentiles.season, latestSeason.season)))
-    : [];
-  const percentileByMetric = new Map(percentiles.map((p) => [p.metric, p]));
+  const group = latestSeason
+    ? (await fetchRowPercentiles([playerId])).get(statRowKey(latestSeason))
+    : undefined;
   const eligible = Boolean(latestSeason && latestSeason.minutes >= MIN_MINUTES);
 
   const radarMetrics = RADAR_KEYS
     .map((key) => {
       const def = METRIC_BY_KEY.get(key);
-      const pct = percentileByMetric.get(key);
+      const pct = group?.byMetric.get(key);
       if (!def || !pct) return null;
       return { key, label: def.label, percentile: pct.percentile };
     })
     .filter((m) => m !== null);
 
-  const [vector] = await db.select().from(playerVectors).where(eq(playerVectors.playerId, playerId)).limit(1);
+  const vector = await latestVector(playerId);
   const comparables = vector?.styleVec
-    ? await db
-      .select({
-        fullName: players.fullName,
-        positionGroup: players.positionGroup,
-        similarity: sql<number>`1 - (${cosineDistance(playerVectors.styleVec, vector.styleVec)})`,
-      })
-      .from(playerVectors)
-      .innerJoin(players, eq(players.id, playerVectors.playerId))
-      .where(ne(playerVectors.playerId, playerId))
-      .orderBy(cosineDistance(playerVectors.styleVec, vector.styleVec))
-      .limit(5)
+    ? await topSimilar(playerVectors.styleVec, vector.styleVec, playerId, 5)
     : [];
 
   const notes = await db
@@ -134,6 +124,12 @@ export default async function PlayerReportPage({ params }: { params: Promise<{ i
           <p className="mb-4 font-mono text-xs text-paper/50">
             {latestSeason.clubName} — {latestSeason.minutes} min ({latestSeason.matchesPlayed ?? '?'} matchs)
           </p>
+          {mostRecent && mostRecent !== latestSeason && (
+            <p className="mb-4 font-mono text-xs text-spotlight">
+              Saison plus récente disponible mais sous le seuil de {MIN_MINUTES} min :{' '}
+              {mostRecent.competitionName} · {mostRecent.season} ({mostRecent.minutes} min).
+            </p>
+          )}
 
           {!eligible && (
             <p className="text-sm text-paper/60">
@@ -141,10 +137,15 @@ export default async function PlayerReportPage({ params }: { params: Promise<{ i
             </p>
           )}
 
-          {eligible && radarMetrics.length >= 3 && (
-            <div className="mb-4 flex justify-center">
-              <PercentileRadar metrics={radarMetrics} />
-            </div>
+          {eligible && group && radarMetrics.length >= 3 && (
+            <>
+              <p className="mb-2 font-mono text-xs text-paper/60">
+                Percentiles vs {describePeerGroup(group, PEER_GROUP_SEASON_SPAN)}
+              </p>
+              <div className="mb-4 flex justify-center">
+                <PercentileRadar metrics={radarMetrics} />
+              </div>
+            </>
           )}
         </section>
       )}
@@ -154,8 +155,11 @@ export default async function PlayerReportPage({ params }: { params: Promise<{ i
         {comparables.length === 0 && <p className="text-sm text-paper/50">Pas encore de vecteur calculé.</p>}
         <ol className="space-y-1 font-mono text-sm">
           {comparables.map((c, i) => (
-            <li key={`${c.fullName}-${i}`} className="flex justify-between border-b border-paper/10 py-1">
-              <span className="font-sans text-paper">{i + 1}. {c.fullName}</span>
+            <li key={c.playerId} className="flex justify-between border-b border-paper/10 py-1">
+              <span className="font-sans text-paper">
+                {i + 1}. {c.fullName}
+                <span className="ml-2 font-mono text-xs text-paper/40">{c.season}</span>
+              </span>
               <span className="text-spotlight">{(c.similarity * 100).toFixed(0)} %</span>
             </li>
           ))}

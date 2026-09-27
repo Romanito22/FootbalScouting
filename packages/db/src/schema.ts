@@ -141,6 +141,10 @@ export const peerGroups = pgTable('peer_groups', {
   id: text('id').primaryKey(),                 // 'CM|tier1|BIG5|2025-2026'
   label: text('label').notNull(),              // 'Milieux centraux · Big 5 · 2025-26'
   positionGroup: positionGroupEnum('position_group').notNull(),
+  /** Palier des membres. Permet de retrouver sans ambiguïté LE groupe d'une
+   * ligne de stats (même saison, même palier) — un joueur figure aussi dans
+   * les groupes des saisons voisines (fenêtre ± PEER_GROUP_SEASON_SPAN). */
+  tier: smallint('tier'),
   season: text('season').notNull(),
   minMinutes: integer('min_minutes').notNull().default(600),
   sampleSize: integer('sample_size').notNull(),
@@ -157,6 +161,13 @@ export const playerPercentiles = pgTable('player_percentiles', {
   metric: text('metric').notNull(),
   rawValue: numeric('raw_value'),
   percentile: smallint('percentile').notNull(),
+  /** Ligne player_season_stats décrite (un joueur peut en avoir deux la même
+   * saison : seule la plus fournie en minutes est classée). */
+  competitionId: integer('competition_id').references(() => competitions.id),
+  clubId: integer('club_id').references(() => clubs.id),
+  /** Effectif réel du classement sur CETTE métrique : peut être inférieur à
+   * celui du groupe quand une source ne fournit pas la métrique. */
+  sampleSize: integer('sample_size'),
 }, (t) => [
   primaryKey({ columns: [t.playerId, t.season, t.peerGroupId, t.metric] }),
   index('pp_group_metric_idx').on(t.peerGroupId, t.metric, t.percentile),

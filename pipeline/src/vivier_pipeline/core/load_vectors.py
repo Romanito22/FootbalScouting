@@ -10,21 +10,37 @@ from vivier_pipeline.core.vectors import VectorResult
 
 
 def fetch_vector_input(conn: psycopg.Connection, min_minutes: int) -> pd.DataFrame:
-    """Une ligne par (player_id, season) au-dessus du seuil de minutes, avec
-    ses percentiles déjà calculés (core/percentiles.py) agrégés en dict.
+    """Une ligne par (player_id, season) au-dessus du seuil de minutes — la
+    plus fournie en minutes si le joueur en a plusieurs (clé primaire de
+    player_vectors, même règle de départage que core/percentiles) — avec ses
+    percentiles déjà calculés (core/percentiles.py) agrégés en dict.
+
+    Les percentiles viennent du SEUL groupe de pairs propre à cette ligne
+    (saison-centre = sa saison, même compétition/club) : un joueur figure
+    aussi dans les groupes des saisons voisines, et mélanger ces
+    classements donnerait un vecteur qualité incohérent.
+
     Un joueur sans percentile pour cette saison (peer_groups pas encore
     recalculés) est exclu : pas de vecteur qualité sans percentile."""
     rows = conn.execute(
         """
-        SELECT pss.player_id, pss.season, p.position_group, pss.metrics,
+        SELECT DISTINCT ON (pss.player_id, pss.season)
+               pss.player_id, pss.season, p.position_group, pss.metrics,
                (
                    SELECT jsonb_object_agg(pp.metric, pp.percentile)
                    FROM player_percentiles pp
-                   WHERE pp.player_id = pss.player_id AND pp.season = pss.season
+                   JOIN peer_groups pg ON pg.id = pp.peer_group_id
+                   WHERE pp.player_id = pss.player_id
+                     AND pp.season = pss.season
+                     AND pg.season = pss.season
+                     AND pp.competition_id = pss.competition_id
+                     AND pp.club_id = pss.club_id
                ) AS percentiles
         FROM player_season_stats pss
         JOIN players p ON p.id = pss.player_id
         WHERE pss.minutes >= %s
+        ORDER BY pss.player_id, pss.season, pss.minutes DESC,
+                 pss.competition_id, pss.club_id
         """,
         (min_minutes,),
     ).fetchall()

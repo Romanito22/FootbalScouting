@@ -10,6 +10,8 @@ export default async function PlayersPage() {
       fullName: players.fullName,
       positionGroup: players.positionGroup,
       season: playerSeasonStats.season,
+      competitionId: playerSeasonStats.competitionId,
+      clubId: playerSeasonStats.clubId,
       minutes: playerSeasonStats.minutes,
       clubName: clubs.name,
     })
@@ -35,7 +37,7 @@ export default async function PlayersPage() {
         </thead>
         <tbody className="font-mono">
           {rows.map((row) => (
-            <tr key={row.id} className="border-b border-paper/10 hover:bg-surface">
+            <tr key={`${row.id}|${row.season}|${row.competitionId}|${row.clubId}`} className="border-b border-paper/10 hover:bg-surface">
               <td className="py-1.5 font-sans">
                 <Link href={`/players/${row.id}`} className="hover:text-spotlight">
                   {row.fullName}

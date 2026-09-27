@@ -1,12 +1,17 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { and, desc, eq } from 'drizzle-orm';
+import { desc, eq } from 'drizzle-orm';
 import {
-  clubs, competitions, db, peerGroups, playerPercentiles, players, playerSeasonStats, shortlists,
+  clubs, competitions, db, players, playerSeasonStats, shortlists,
 } from '@vivier/db';
-import { METRICS, MIN_MINUTES, POSITION_GROUP_LABELS } from '@vivier/metrics';
+import {
+  METRICS, MIN_MINUTES, PEER_GROUP_SEASON_SPAN, POSITION_GROUP_LABELS,
+} from '@vivier/metrics';
 import { PercentileRadar } from '@/components/PercentileRadar';
 import { formatMetricValue } from '@/lib/format';
+import {
+  describePeerGroup, fetchRowPercentiles, type MetricPercentile, statRowKey,
+} from '@/lib/percentiles';
 import { addPlayerToShortlist } from '@/app/shortlists/actions';
 import { NotesSection } from './NotesSection';
 
@@ -27,7 +32,10 @@ export default async function PlayerPage({ params }: { params: Promise<{ id: str
 
   const seasons = await db
     .select({
+      playerId: playerSeasonStats.playerId,
       season: playerSeasonStats.season,
+      competitionId: playerSeasonStats.competitionId,
+      clubId: playerSeasonStats.clubId,
       minutes: playerSeasonStats.minutes,
       matchesPlayed: playerSeasonStats.matchesPlayed,
       metrics: playerSeasonStats.metrics,
@@ -38,27 +46,14 @@ export default async function PlayerPage({ params }: { params: Promise<{ id: str
     .innerJoin(competitions, eq(competitions.id, playerSeasonStats.competitionId))
     .innerJoin(clubs, eq(clubs.id, playerSeasonStats.clubId))
     .where(eq(playerSeasonStats.playerId, playerId))
-    .orderBy(desc(playerSeasonStats.season));
+    .orderBy(desc(playerSeasonStats.season), desc(playerSeasonStats.minutes));
 
-  const percentileRows = await db
-    .select({
-      season: playerPercentiles.season,
-      metric: playerPercentiles.metric,
-      rawValue: playerPercentiles.rawValue,
-      percentile: playerPercentiles.percentile,
-      peerGroupLabel: peerGroups.label,
-      peerGroupSampleSize: peerGroups.sampleSize,
-    })
-    .from(playerPercentiles)
-    .innerJoin(peerGroups, eq(peerGroups.id, playerPercentiles.peerGroupId))
-    .where(eq(playerPercentiles.playerId, playerId));
-
-  const percentilesBySeason = new Map<string, typeof percentileRows>();
-  for (const row of percentileRows) {
-    const list = percentilesBySeason.get(row.season) ?? [];
-    list.push(row);
-    percentilesBySeason.set(row.season, list);
-  }
+  const percentilesByRow = await fetchRowPercentiles([playerId]);
+  // Saisons dont une AUTRE ligne porte les percentiles (transfert en cours de
+  // saison : seule la ligne la plus fournie en minutes est classée).
+  const seasonsWithPercentiles = new Set(
+    seasons.filter((s) => percentilesByRow.has(statRowKey(s))).map((s) => s.season),
+  );
 
   const allShortlists = await db.select({ id: shortlists.id, name: shortlists.name }).from(shortlists);
 
@@ -101,10 +96,8 @@ export default async function PlayerPage({ params }: { params: Promise<{ id: str
 
       {seasons.map((s) => {
         const eligible = s.minutes >= MIN_MINUTES;
-        const percentiles = percentilesBySeason.get(s.season) ?? [];
-        const peerGroupLabel = percentiles[0]?.peerGroupLabel;
-        const peerGroupSampleSize = percentiles[0]?.peerGroupSampleSize;
-        const percentileByMetric = new Map(percentiles.map((p) => [p.metric, p]));
+        const group = percentilesByRow.get(statRowKey(s));
+        const percentileByMetric = group?.byMetric ?? new Map<string, MetricPercentile>();
 
         const radarMetrics = RADAR_KEYS
           .map((key) => {
@@ -116,7 +109,7 @@ export default async function PlayerPage({ params }: { params: Promise<{ id: str
           .filter((m) => m !== null);
 
         return (
-          <section key={s.season} className="mb-10 border-t border-paper/15 pt-6">
+          <section key={statRowKey(s)} className="mb-10 border-t border-paper/15 pt-6">
             <div className="mb-4 flex items-baseline justify-between">
               <h2 className="font-display text-xl font-bold text-paper">
                 {s.competitionName} · {s.season}
@@ -135,10 +128,15 @@ export default async function PlayerPage({ params }: { params: Promise<{ id: str
 
             {eligible && (
               <>
-                {peerGroupLabel && (
+                {group ? (
                   <p className="mb-4 font-mono text-xs text-paper/60">
-                    Groupe de pairs : {peerGroupLabel} ({peerGroupSampleSize} joueur
-                    {peerGroupSampleSize === 1 ? '' : 's'})
+                    Groupe de pairs : {describePeerGroup(group, PEER_GROUP_SEASON_SPAN)}
+                  </p>
+                ) : (
+                  <p className="mb-4 font-mono text-xs text-paper/60">
+                    {seasonsWithPercentiles.has(s.season)
+                      ? 'Percentiles non calculés pour cette ligne : la saison est classée via sa ligne la plus fournie en minutes (ci-dessus ou ci-dessous).'
+                      : 'Percentiles pas encore calculés pour cette ligne (lancer compute_percentiles).'}
                   </p>
                 )}
 
@@ -169,6 +167,11 @@ export default async function PlayerPage({ params }: { params: Promise<{ id: str
                           </td>
                           <td className="py-1 text-right text-spotlight">
                             {pct ? `${pct.percentile}ᵉ` : '—'}
+                            {pct && group && pct.sampleSize !== group.peerGroupSampleSize && (
+                              <span className="ml-1 text-paper/40" title="Effectif réel du classement sur cette métrique (source partielle)">
+                                n={pct.sampleSize}
+                              </span>
+                            )}
                           </td>
                         </tr>
                       );

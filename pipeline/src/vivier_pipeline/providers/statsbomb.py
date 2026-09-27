@@ -30,6 +30,26 @@ def _load_or_fetch(path: Path, fetch) -> pd.DataFrame:
     return df
 
 
+def fetch_competitions() -> pd.DataFrame:
+    return _load_or_fetch(_cache_path("competitions"), sb.competitions)
+
+
+def is_international(competition_id: int, season_id: int) -> bool:
+    """Sélections nationales (True) ou clubs (False), d'après le drapeau
+    `competition_international` du référentiel StatsBomb."""
+    competitions = fetch_competitions()
+    match = competitions[
+        (competitions["competition_id"] == competition_id)
+        & (competitions["season_id"] == season_id)
+    ]
+    if match.empty:
+        raise ValueError(
+            f"Compétition StatsBomb inconnue : competition_id={competition_id}, "
+            f"season_id={season_id}"
+        )
+    return bool(match.iloc[0]["competition_international"])
+
+
 def fetch_matches(competition_id: int, season_id: int) -> pd.DataFrame:
     path = _cache_path("matches", f"{competition_id}_{season_id}")
     return _load_or_fetch(

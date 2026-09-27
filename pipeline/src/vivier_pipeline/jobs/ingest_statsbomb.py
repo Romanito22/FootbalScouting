@@ -24,7 +24,10 @@ def run(competition_id: int, season_id: int) -> None:
         events_by_match[match_id] = statsbomb.fetch_events(match_id)
         lineups_by_match[match_id] = statsbomb.fetch_lineups(match_id)
 
-    agg = aggregate_competition(matches, events_by_match, lineups_by_match)
+    agg = aggregate_competition(
+        matches, events_by_match, lineups_by_match,
+        is_international=statsbomb.is_international(competition_id, season_id),
+    )
     print(f"{len(agg.players)} joueur(s) de champ, {len(agg.clubs)} équipe(s)")
 
     with get_conn() as conn:

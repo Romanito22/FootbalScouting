@@ -12,6 +12,7 @@ import pandas as pd
 from vivier_pipeline.core.identity import normalize_name
 from vivier_pipeline.core.metrics_registry import outfield_metric_keys
 from vivier_pipeline.core.positions import normalize_statsbomb_position
+from vivier_pipeline.core.seasons import canonical_season
 
 # Cartes émises hors "Foul Committed" (ex. dissidence) sont sur "Bad Behaviour".
 YELLOW_CODES = {"Yellow Card", "Second Yellow"}
@@ -223,7 +224,11 @@ def aggregate_competition(
     matches: pd.DataFrame,
     events_by_match: dict[int, pd.DataFrame],
     lineups_by_match: dict[int, dict[str, pd.DataFrame]],
+    is_international: bool = True,
 ) -> CompetitionAggregation:
+    """`is_international` (competitions.json de StatsBomb) : sélections
+    nationales (Coupe du monde, Euro...) ou clubs (championnats, Ligue des
+    champions...). Détermine `clubs.is_national_team` et le pays du club."""
     expected_keys = outfield_metric_keys()
 
     first = matches.iloc[0]
@@ -231,7 +236,7 @@ def aggregate_competition(
         "name": first["competition_name"],
         "country": first["competition_country_name"],
         "tier": 1,
-        "season": str(first["season"]),
+        "season": canonical_season(str(first["season"])),
         "source_ids": {"statsbomb": str(first["competition_id"])},
     })
 
@@ -252,14 +257,21 @@ def aggregate_competition(
         merged[counts.columns] = merged[counts.columns].fillna(0.0)
         all_lineup_rows.append(merged)
 
+        team_countries = {
+            match["home_team"]: match.get("home_team_country_name"),
+            match["away_team"]: match.get("away_team_country_name"),
+        }
         for team_name, raw_team_id in team_ids.items():
             team_id = int(raw_team_id)
             if team_id not in result.clubs:
+                country = team_countries.get(team_name)
                 result.clubs[team_id] = {
                     "name": team_name,
                     "normalized_name": normalize_name(team_name),
-                    "country": team_name,
-                    "is_national_team": True,
+                    "country": team_name if is_international else (
+                        country if isinstance(country, str) else None
+                    ),
+                    "is_national_team": is_international,
                     "source_ids": {"statsbomb_team": str(team_id)},
                 }
 

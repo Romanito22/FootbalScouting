@@ -32,6 +32,7 @@ import soccerdata as sd
 
 from vivier_pipeline.core.identity import normalize_name
 from vivier_pipeline.core.metrics_registry import outfield_metric_keys
+from vivier_pipeline.core.seasons import multi_year_code_to_canonical
 
 STANDARD_COLUMNS = [
     ("Playing Time", "Min"), ("Playing Time", "90s"), ("Playing Time", "MP"),
@@ -70,8 +71,13 @@ def fetch_player_season_stats(leagues: list[str], seasons: list[str]) -> pd.Data
 
 def normalize_row(index: tuple[str, str, str, str], row: pd.Series) -> dict | None:
     """Une ligne (index + Series) de `fetch_player_season_stats` vers un
-    enregistrement canonique. None si minutes == 0 (rien à en tirer)."""
-    league, season, team, player = index
+    enregistrement canonique. None si minutes == 0 (rien à en tirer).
+
+    soccerdata indexe les saisons par code compact ('2223') : converti ici
+    au format canonique ('2022-2023') avant toute autre utilisation, y
+    compris dans `source_id`."""
+    league, raw_season, team, player = index
+    season = multi_year_code_to_canonical(raw_season)
     minutes = row[("Playing Time", "Min")]
     if pd.isna(minutes) or minutes <= 0:
         return None

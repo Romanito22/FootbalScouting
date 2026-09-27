@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { METRICS, MIN_MINUTES, OUTFIELD_POSITION_GROUPS, POSITION_GROUP_LABELS } from '@vivier/metrics';
 import { PercentileRadar } from '@/components/PercentileRadar';
 import { parseSearchFilters } from '@/lib/searchFilters';
+import { statRowKey } from '@/lib/percentiles';
 import { runSearch } from '@/lib/searchQuery';
 import { SaveSearchForm } from './SaveSearchForm';
 
@@ -12,7 +13,7 @@ export default async function SearchPage({
 }) {
   const rawParams = await searchParams;
   const filters = parseSearchFilters(rawParams);
-  const { rows, radarByPlayer } = await runSearch(filters);
+  const { rows, radarByRow } = await runSearch(filters);
 
   return (
     <main className="mx-auto max-w-5xl px-6 py-10">
@@ -116,7 +117,7 @@ export default async function SearchPage({
         </thead>
         <tbody className="font-mono">
           {rows.map((row) => (
-            <tr key={`${row.playerId}|${row.season}`} className="border-b border-paper/10 hover:bg-surface">
+            <tr key={statRowKey(row)} className="border-b border-paper/10 hover:bg-surface">
               <td className="py-1.5 font-sans">
                 <Link href={`/players/${row.playerId}`} className="hover:text-spotlight">
                   {row.fullName}
@@ -128,8 +129,16 @@ export default async function SearchPage({
               <td className="py-1.5 text-right">{row.minutes}</td>
               <td className="py-1">
                 {(() => {
-                  const radar = radarByPlayer.get(`${row.playerId}|${row.season}`);
-                  return radar && radar.length >= 3 ? <PercentileRadar metrics={radar} compact /> : null;
+                  const radar = radarByRow.get(statRowKey(row));
+                  if (!radar || radar.metrics.length < 3) return null;
+                  return (
+                    <div className="flex items-center gap-2" title={`Percentiles vs ${radar.peerGroupLabel} (${radar.peerGroupSampleSize} joueurs)`}>
+                      <PercentileRadar metrics={radar.metrics} compact />
+                      <span className="max-w-40 font-sans text-[10px] leading-tight text-paper/40">
+                        vs {radar.peerGroupLabel} · n={radar.peerGroupSampleSize}
+                      </span>
+                    </div>
+                  );
                 })()}
               </td>
             </tr>

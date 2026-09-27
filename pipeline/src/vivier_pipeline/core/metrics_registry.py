@@ -40,3 +40,14 @@ def outfield_metric_keys() -> set[str]:
 def metric_direction() -> dict[str, bool]:
     """key -> higherIsBetter, pour orienter le sens du classement en percentile."""
     return {m["key"]: m["higherIsBetter"] for m in load_registry()["metrics"]}
+
+
+def metrics_by_position() -> dict[str, list[str]]:
+    """poste -> clés des métriques qui s'y appliquent (`appliesTo`), dans
+    l'ordre du registre. Un gardien n'est jamais classé sur des métriques de
+    joueur de champ, et inversement."""
+    registry = load_registry()
+    return {
+        position: [m["key"] for m in registry["metrics"] if position in m["appliesTo"]]
+        for position in registry["positionGroups"]
+    }

@@ -1,7 +1,9 @@
 import { and, desc, eq, gte, inArray, lte, sql } from 'drizzle-orm';
 import {
-  clubs, competitions, db, playerPercentiles, players, playerSeasonStats,
+  clubs, competitions, db, peerGroups, playerPercentiles, players, playerSeasonStats,
 } from '@vivier/db';
+import { METRICS } from '@vivier/metrics';
+import { fetchRowPercentiles, statRowKey } from './percentiles';
 import type { SearchFilters } from './searchFilters';
 
 export const ROW_RADAR_KEYS = [
@@ -13,6 +15,8 @@ export interface SearchResultRow {
   fullName: string;
   positionGroup: string;
   season: string;
+  competitionId: number;
+  clubId: number;
   minutes: number;
   clubName: string;
   competitionName: string;
@@ -21,10 +25,18 @@ export interface SearchResultRow {
 }
 
 const RESULT_LIMIT = 200;
+const METRIC_LABELS = new Map(METRICS.map((m) => [m.key, m.label]));
+
+export interface RowRadar {
+  metrics: { key: string; label: string; percentile: number }[];
+  peerGroupLabel: string;
+  peerGroupSampleSize: number;
+}
 
 export async function runSearch(filters: SearchFilters): Promise<{
   rows: SearchResultRow[];
-  radarByPlayer: Map<string, { key: string; label: string; percentile: number }[]>;
+  /** Clé : statRowKey — le radar d'une ligne vient de SON groupe de pairs. */
+  radarByRow: Map<string, RowRadar>;
 }> {
   const conditions = [];
   if (filters.positions.length) conditions.push(inArray(players.positionGroup, filters.positions));
@@ -41,13 +53,31 @@ export async function runSearch(filters: SearchFilters): Promise<{
     conditions.push(lte(players.marketValueEur, filters.marketValueMax));
   }
   if (filters.tier !== null) conditions.push(eq(competitions.tier, filters.tier));
+  // Seuil de percentile : dans le groupe de pairs propre à la ligne (saison-
+  // centre = sa saison, même compétition/club), et AVANT la limite de
+  // résultats — filtrer après coup ferait disparaître des joueurs en silence.
+  if (filters.metric && filters.percentileMin !== null) {
+    conditions.push(sql`EXISTS (
+      SELECT 1 FROM ${playerPercentiles}
+      INNER JOIN ${peerGroups} ON ${peerGroups.id} = ${playerPercentiles.peerGroupId}
+      WHERE ${playerPercentiles.playerId} = ${playerSeasonStats.playerId}
+        AND ${playerPercentiles.season} = ${playerSeasonStats.season}
+        AND ${peerGroups.season} = ${playerSeasonStats.season}
+        AND ${playerPercentiles.competitionId} = ${playerSeasonStats.competitionId}
+        AND ${playerPercentiles.clubId} = ${playerSeasonStats.clubId}
+        AND ${playerPercentiles.metric} = ${filters.metric}
+        AND ${playerPercentiles.percentile} >= ${filters.percentileMin}
+    )`);
+  }
 
-  let rows = await db
+  const rows = await db
     .select({
       playerId: players.id,
       fullName: players.fullName,
       positionGroup: players.positionGroup,
       season: playerSeasonStats.season,
+      competitionId: playerSeasonStats.competitionId,
+      clubId: playerSeasonStats.clubId,
       minutes: playerSeasonStats.minutes,
       clubName: clubs.name,
       competitionName: competitions.name,
@@ -62,44 +92,23 @@ export async function runSearch(filters: SearchFilters): Promise<{
     .orderBy(desc(playerSeasonStats.minutes))
     .limit(RESULT_LIMIT);
 
-  // Seuil de percentile sur une métrique : filtré à part (intersection en
-  // mémoire) plutôt qu'un join conditionnel, pour rester simple et lisible.
-  if (filters.metric && filters.percentileMin !== null) {
-    const eligible = await db
-      .select({ playerId: playerPercentiles.playerId, season: playerPercentiles.season })
-      .from(playerPercentiles)
-      .where(and(
-        eq(playerPercentiles.metric, filters.metric),
-        gte(playerPercentiles.percentile, filters.percentileMin),
-      ));
-    const eligibleKeys = new Set(eligible.map((e) => `${e.playerId}|${e.season}`));
-    rows = rows.filter((r) => eligibleKeys.has(`${r.playerId}|${r.season}`));
+  const percentilesByRow = await fetchRowPercentiles(
+    [...new Set(rows.map((r) => r.playerId))], ROW_RADAR_KEYS,
+  );
+  const radarByRow = new Map<string, RowRadar>();
+  for (const row of rows) {
+    const key = statRowKey(row);
+    const group = percentilesByRow.get(key);
+    if (!group) continue;
+    radarByRow.set(key, {
+      metrics: ROW_RADAR_KEYS.flatMap((metric) => {
+        const pct = group.byMetric.get(metric);
+        return pct ? [{ key: metric, label: METRIC_LABELS.get(metric) ?? metric, percentile: pct.percentile }] : [];
+      }),
+      peerGroupLabel: group.peerGroupLabel,
+      peerGroupSampleSize: group.peerGroupSampleSize,
+    });
   }
 
-  const playerIds = [...new Set(rows.map((r) => r.playerId))];
-  const radarByPlayer = new Map<string, { key: string; label: string; percentile: number }[]>();
-
-  if (playerIds.length) {
-    const percentileRows = await db
-      .select({
-        playerId: playerPercentiles.playerId,
-        season: playerPercentiles.season,
-        metric: playerPercentiles.metric,
-        percentile: playerPercentiles.percentile,
-      })
-      .from(playerPercentiles)
-      .where(and(
-        inArray(playerPercentiles.playerId, playerIds),
-        inArray(playerPercentiles.metric, ROW_RADAR_KEYS),
-      ));
-
-    for (const p of percentileRows) {
-      const key = `${p.playerId}|${p.season}`;
-      const list = radarByPlayer.get(key) ?? [];
-      list.push({ key: p.metric, label: p.metric, percentile: p.percentile });
-      radarByPlayer.set(key, list);
-    }
-  }
-
-  return { rows, radarByPlayer };
+  return { rows, radarByRow };
 }

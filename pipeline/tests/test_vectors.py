@@ -160,3 +160,22 @@ def test_realistic_scale_does_not_crash_and_keeps_shape() -> None:
         assert len(r.quality_vec) == VECTOR_DIM
         assert all(np.isfinite(v) for v in r.style_vec)
         assert all(np.isfinite(v) for v in r.quality_vec)
+
+
+def test_missing_metric_is_imputed_neutrally_not_as_zero() -> None:
+    """Une source qui ne fournit pas une métrique (FBref) : pas de NaN dans
+    la réduction SVD, et le joueur n'est pas traité comme n'ayant « rien
+    fait » sur cette métrique — il y est ramené au joueur médian."""
+    rows = pd.DataFrame([
+        _row(1, "CM", {"goals": 1.0, "assists": 2.0}, {"goals": 50, "assists": 60}),
+        _row(2, "CM", {"goals": 2.0, "assists": 1.0}, {"goals": 80, "assists": 40}),
+        _row(3, "CM", {"goals": 1.5, "assists": 1.5}, {"goals": 70, "assists": 50}),
+        _row(4, "CM", {"goals": 1.5}, {"goals": 70}),  # assists non mesuré
+    ])
+    results = compute_vectors(rows, ["goals", "assists"], DIRECTION)
+    by_id = {r.player_id: r for r in results}
+    for r in results:
+        assert not np.isnan(r.style_vec).any()
+        assert not np.isnan(r.quality_vec).any()
+    # imputé à la médiane (assists 1.5, percentile 50) : identique au joueur 3
+    assert cosine(by_id[4].style_vec, by_id[3].style_vec) == pytest.approx(1.0)
