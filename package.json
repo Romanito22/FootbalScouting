@@ -15,6 +15,7 @@
     "metrics:export": "pnpm --filter @vivier/metrics export",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test && pnpm test:pipeline",
-    "test:pipeline": "cd pipeline && uv run pytest -q"
+    "test:pipeline": "cd pipeline && uv run pytest -q",
+    "pipeline:refresh": "cd pipeline && uv run python -m vivier_pipeline.jobs.refresh"
   }
 }
