@@ -10,6 +10,8 @@ import {
 import { PercentileRadar } from '@/components/PercentileRadar';
 import { describePeerGroup, fetchRowPercentiles, statRowKey } from '@/lib/percentiles';
 import { latestVector, topSimilar } from '@/lib/similarity';
+import { fetchCompetitionStrengths, referenceOf } from '@/lib/strength';
+import { LeagueStrengthLine } from '../AdjustedSection';
 import { PrintButton } from './PrintButton';
 
 const RADAR_KEYS = [
@@ -57,6 +59,10 @@ export default async function PlayerReportPage({ params }: { params: Promise<{ i
     ? (await fetchRowPercentiles([playerId])).get(statRowKey(latestSeason))
     : undefined;
   const eligible = Boolean(latestSeason && latestSeason.minutes >= MIN_MINUTES);
+  const strengths = await fetchCompetitionStrengths();
+  const seasonCompetition = latestSeason
+    ? strengths.find((c) => c.id === latestSeason.competitionId)
+    : undefined;
 
   const radarMetrics = RADAR_KEYS
     .map((key) => {
@@ -124,6 +130,12 @@ export default async function PlayerReportPage({ params }: { params: Promise<{ i
           <p className="mb-4 font-mono text-xs text-paper/50">
             {latestSeason.clubName} — {latestSeason.minutes} min ({latestSeason.matchesPlayed ?? '?'} matchs)
           </p>
+          {seasonCompetition && (
+            <LeagueStrengthLine
+              competition={seasonCompetition}
+              referenceName={referenceOf(strengths)?.name ?? null}
+            />
+          )}
           {mostRecent && mostRecent !== latestSeason && (
             <p className="mb-4 font-mono text-xs text-spotlight">
               Saison plus récente disponible mais sous le seuil de {MIN_MINUTES} min :{' '}

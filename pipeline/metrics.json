@@ -1,6 +1,13 @@
 {
   "minMinutes": 600,
   "peerGroupSeasonSpan": 2,
+  "leagueStrength": {
+    "minMinutes": 270,
+    "maxSeasonGap": 1,
+    "minLinkPlayers": 5,
+    "ciLevel": 0.9,
+    "bootstrapSamples": 500
+  },
   "positionGroups": [
     "GK",
     "DC",
@@ -37,7 +44,8 @@
         "AM",
         "W",
         "ST"
-      ]
+      ],
+      "leagueAdjusted": true
     },
     {
       "key": "np_goals",
@@ -55,6 +63,7 @@
         "W",
         "ST"
       ],
+      "leagueAdjusted": true,
       "derivedFrom": [
         "shot_outcome",
         "shot_type"
@@ -75,7 +84,8 @@
         "AM",
         "W",
         "ST"
-      ]
+      ],
+      "leagueAdjusted": true
     },
     {
       "key": "xg",
@@ -93,6 +103,7 @@
         "W",
         "ST"
       ],
+      "leagueAdjusted": true,
       "derivedFrom": [
         "shot_statsbomb_xg"
       ]
@@ -113,6 +124,7 @@
         "W",
         "ST"
       ],
+      "leagueAdjusted": true,
       "derivedFrom": [
         "shot_statsbomb_xg",
         "shot_type"
@@ -178,6 +190,7 @@
         "W",
         "ST"
       ],
+      "leagueAdjusted": true,
       "derivedFrom": [
         "pass_shot_assist"
       ]
@@ -198,6 +211,7 @@
         "W",
         "ST"
       ],
+      "leagueAdjusted": true,
       "derivedFrom": [
         "pass_goal_assist"
       ]
@@ -218,6 +232,7 @@
         "W",
         "ST"
       ],
+      "leagueAdjusted": true,
       "derivedFrom": [
         "pass_assisted_shot_id",
         "shot_statsbomb_xg"
@@ -256,7 +271,8 @@
         "AM",
         "W",
         "ST"
-      ]
+      ],
+      "leagueAdjusted": true
     },
     {
       "key": "dribble_success_rate",

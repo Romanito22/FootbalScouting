@@ -179,3 +179,26 @@ def test_missing_metric_is_imputed_neutrally_not_as_zero() -> None:
         assert not np.isnan(r.quality_vec).any()
     # imputé à la médiane (assists 1.5, percentile 50) : identique au joueur 3
     assert cosine(by_id[4].style_vec, by_id[3].style_vec) == pytest.approx(1.0)
+
+
+def test_adjusted_percentiles_replace_tier_percentiles_in_quality_vector() -> None:
+    """Deux joueurs premiers de leur palier (mêmes percentiles de palier)
+    mais dans des championnats de force très différente : une fois ajustés,
+    leurs vecteurs de niveau doivent diverger."""
+    base = [
+        _row(1, "W", {"goals": 1.0, "assists": 1.0}, {"goals": 95, "assists": 95}),
+        _row(2, "W", {"goals": 1.0, "assists": 1.0}, {"goals": 95, "assists": 95}),
+        _row(3, "W", {"goals": 0.2, "assists": 0.9}, {"goals": 20, "assists": 80}),
+    ]
+    without = compute_vectors(pd.DataFrame(base), ["goals", "assists"], DIRECTION)
+    by_id = {r.player_id: r for r in without}
+    assert by_id[1].quality_vec == pytest.approx(by_id[2].quality_vec)
+
+    adjusted = pd.DataFrame(base).assign(adjusted_percentiles=[
+        {"goals": 95, "assists": 95},  # championnat fort : reste en tête
+        {"goals": 30, "assists": 90},  # championnat faible : buts dévalués
+        None,                          # pas de coefficient : palier seul
+    ])
+    with_adj = {r.player_id: r for r in compute_vectors(adjusted, ["goals", "assists"], DIRECTION)}
+    assert with_adj[1].quality_vec != pytest.approx(with_adj[2].quality_vec)
+    assert with_adj[1].model_version == "v2"

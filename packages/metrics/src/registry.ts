@@ -15,6 +15,14 @@ export interface MetricDef {
   /** Renseigné si la métrique n'est pas fournie telle quelle par la source. */
   derivedFrom?: string[];
   note?: string;
+  /**
+   * Volume de production qui baisse mécaniquement face à une opposition plus
+   * forte : sert d'indice pour estimer la force des championnats, et reçoit
+   * un percentile « toutes compétitions » ajusté de cette force. Jamais sur
+   * un ratio (xG/tir, taux de réussite), une différence ou une action
+   * défensive (qui dépend surtout de la possession adverse).
+   */
+  leagueAdjusted?: boolean;
 }
 
 const OUTFIELD = [...OUTFIELD_POSITION_GROUPS];
@@ -31,24 +39,29 @@ export const METRICS: readonly MetricDef[] = [
   {
     key: 'goals', label: 'Buts', family: 'production', per90: true,
     higherIsBetter: true, format: 'dec2', appliesTo: OUTFIELD,
+    leagueAdjusted: true,
   },
   {
     key: 'np_goals', label: 'Buts hors pénalty', family: 'production', per90: true,
     higherIsBetter: true, format: 'dec2', appliesTo: OUTFIELD,
+    leagueAdjusted: true,
     derivedFrom: ['shot_outcome', 'shot_type'],
   },
   {
     key: 'shots', label: 'Tirs', family: 'production', per90: true,
     higherIsBetter: true, format: 'dec2', appliesTo: OUTFIELD,
+    leagueAdjusted: true,
   },
   {
     key: 'xg', label: 'xG', family: 'production', per90: true,
     higherIsBetter: true, format: 'dec2', appliesTo: OUTFIELD,
+    leagueAdjusted: true,
     derivedFrom: ['shot_statsbomb_xg'],
   },
   {
     key: 'npxg', label: 'npxG', family: 'production', per90: true,
     higherIsBetter: true, format: 'dec2', appliesTo: OUTFIELD,
+    leagueAdjusted: true,
     derivedFrom: ['shot_statsbomb_xg', 'shot_type'],
     note: 'xG hors penalties.',
   },
@@ -68,16 +81,19 @@ export const METRICS: readonly MetricDef[] = [
   {
     key: 'key_passes', label: 'Passes clés', family: 'creation', per90: true,
     higherIsBetter: true, format: 'dec2', appliesTo: OUTFIELD,
+    leagueAdjusted: true,
     derivedFrom: ['pass_shot_assist'],
   },
   {
     key: 'assists', label: 'Passes décisives', family: 'creation', per90: true,
     higherIsBetter: true, format: 'dec2', appliesTo: OUTFIELD,
+    leagueAdjusted: true,
     derivedFrom: ['pass_goal_assist'],
   },
   {
     key: 'xa', label: 'xA', family: 'creation', per90: true,
     higherIsBetter: true, format: 'dec2', appliesTo: OUTFIELD,
+    leagueAdjusted: true,
     derivedFrom: ['pass_assisted_shot_id', 'shot_statsbomb_xg'],
     note: 'Proxy : somme du xG des tirs consécutifs à une passe du joueur.',
   },
@@ -90,6 +106,7 @@ export const METRICS: readonly MetricDef[] = [
   {
     key: 'dribbles_completed', label: 'Dribbles réussis', family: 'possession', per90: true,
     higherIsBetter: true, format: 'dec2', appliesTo: OUTFIELD,
+    leagueAdjusted: true,
   },
   {
     key: 'dribble_success_rate', label: 'Taux de réussite dribbles', family: 'possession', per90: false,

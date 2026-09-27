@@ -83,8 +83,15 @@ export default async function SearchPage({
           <select name="metric" defaultValue={filters.metric ?? ''} className="mt-1 w-full border border-paper/30 bg-ink px-2 py-1 text-sm text-paper">
             <option value="">—</option>
             {METRICS.map((m) => (
-              <option key={m.key} value={m.key}>{m.label}</option>
+              <option key={m.key} value={m.key}>{m.label}{m.leagueAdjusted ? ' *' : ''}</option>
             ))}
+          </select>
+        </label>
+        <label className="text-xs text-paper/50">
+          Percentile mesuré contre
+          <select name="percentileScope" defaultValue={filters.percentileScope} className="mt-1 w-full border border-paper/30 bg-ink px-2 py-1 text-sm text-paper">
+            <option value="tier">son palier (même niveau)</option>
+            <option value="adjusted">toutes compétitions, ajusté *</option>
           </select>
         </label>
         <label className="text-xs text-paper/50">
@@ -92,10 +99,15 @@ export default async function SearchPage({
           <input type="number" name="percentileMin" min={0} max={100} defaultValue={filters.percentileMin ?? ''} className="mt-1 w-full border border-paper/30 bg-ink px-2 py-1 text-sm text-paper" />
         </label>
 
-        <div className="col-span-2 flex items-end sm:col-span-4">
+        <div className="col-span-2 flex items-end justify-between gap-4 sm:col-span-4">
           <button type="submit" className="border border-spotlight px-4 py-1.5 text-sm text-spotlight hover:bg-spotlight/10">
             Filtrer
           </button>
+          <p className="text-right text-xs text-paper/40">
+            * « toutes compétitions, ajusté » : métriques de volume offensif uniquement, valeurs
+            corrigées de la force du championnat (seuil appliqué à l'estimation ponctuelle —
+            l'intervalle est sur la fiche joueur).
+          </p>
         </div>
       </form>
 

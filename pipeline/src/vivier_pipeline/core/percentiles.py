@@ -25,9 +25,15 @@ Trois pièges multi-sources gérés ici, chacun verrouillé par un test :
 import re
 from dataclasses import dataclass
 
+import numpy as np
 import pandas as pd
+from scipy.stats import rankdata
 
-from vivier_pipeline.core.metrics_registry import metric_direction, metrics_by_position
+from vivier_pipeline.core.metrics_registry import (
+    league_adjusted_keys,
+    metric_direction,
+    metrics_by_position,
+)
 
 _SEASON_YEAR_RE = re.compile(r"\d{4}")
 
@@ -44,13 +50,15 @@ class PeerGroupResult:
     peer_group_id: str
     label: str
     position_group: str
-    tier: int
+    tier: int | None  # None pour un groupe « toutes compétitions »
     season: str
     min_minutes: int
     sample_size: int
     # player_id, season, competition_id, club_id, metric, raw_value,
-    # percentile, sample_size
+    # percentile, sample_size (+ pour kind="adjusted" : adjusted_value,
+    # adjusted_low, adjusted_high, percentile_low, percentile_high)
     percentiles: list[dict]
+    kind: str = "tier"
 
 
 def _percentile_rank(values: pd.Series, higher_is_better: bool) -> pd.Series:
@@ -159,4 +167,147 @@ def compute_peer_groups(
             percentiles=rank_members(members, keys_by_position[position_group], direction),
         ))
 
+    return results
+
+
+# ---------------------------------------------------------------------------
+# Percentiles ajustés de la force du championnat (phase 7)
+# ---------------------------------------------------------------------------
+
+# Tirages bootstrap utilisés pour l'intervalle des percentiles ajustés :
+# au-delà, le gain de précision sur un 5ᵉ/95ᵉ centile ne vaut pas le coût.
+MAX_PERCENTILE_DRAWS = 200
+
+
+@dataclass
+class LeagueStrength:
+    """Coefficient de force d'une compétition et ses tirages bootstrap,
+    indexés de façon conjointe entre compétitions (cf. core/strength.py)."""
+
+    coef: float
+    samples: list[float | None]
+
+
+def _draw_matrix(
+    competition_ids: np.ndarray, strengths: dict[int, LeagueStrength], n_draws: int,
+) -> np.ndarray:
+    """(n_membres, n_tirages). Un tirage où la compétition n'était pas
+    estimable retombe sur l'estimation ponctuelle (neutre)."""
+    by_comp = {}
+    for comp, strength in strengths.items():
+        draws = np.array(
+            [strength.coef if v is None else v for v in strength.samples[:n_draws]],
+            dtype=float,
+        )
+        if len(draws) < n_draws:
+            draws = np.concatenate([draws, np.full(n_draws - len(draws), strength.coef)])
+        by_comp[comp] = draws
+    return np.stack([by_comp[int(c)] for c in competition_ids])
+
+
+def compute_adjusted_groups(
+    rows: pd.DataFrame,
+    strengths: dict[int, LeagueStrength],
+    min_minutes: int,
+    season_span: int,
+    position_labels: dict[str, str],
+    ci_level: float,
+) -> list[PeerGroupResult]:
+    """Groupes « toutes compétitions » : même poste, fenêtre de saisons,
+    TOUS paliers confondus, sur les seules métriques `leagueAdjusted`, avec
+    la valeur ajustée = brute × coefficient de force de sa compétition.
+    Répond à « est-il meilleur que lui, une fois la différence de
+    championnat prise en compte ? ».
+
+    Seules les lignes dont la compétition a un coefficient estimé entrent
+    dans ces groupes : sans coefficient, pas d'ajustement possible, et le
+    joueur reste classé dans son groupe de palier uniquement.
+
+    Intervalle : chaque tirage bootstrap des coefficients (conjoint entre
+    compétitions) donne un classement complet ; le percentile bas/haut est
+    le quantile (1-ci)/2 / (1+ci)/2 de ces classements. L'incertitude sur la
+    force de SA compétition comme sur celle de TOUS les autres membres est
+    ainsi propagée — un joueur de la ligue de référence (coefficient
+    exactement 1) a donc bien un intervalle, puisque ses concurrents
+    bougent."""
+    if rows.empty or not strengths:
+        return []
+
+    direction = metric_direction()
+    keys_by_position = metrics_by_position()
+    adjusted = set(league_adjusted_keys())
+    alpha = (1.0 - ci_level) / 2.0
+    n_draws = min(MAX_PERCENTILE_DRAWS, max(len(s.samples) for s in strengths.values()))
+
+    df = rows[rows["competition_id"].isin(list(strengths))]
+    if df.empty:
+        return []
+    df = expand_metrics(df, list(direction))
+    df["season_year"] = df["season"].map(parse_season_year)
+
+    results = []
+    for _, combo in df[["position_group", "season"]].drop_duplicates().iterrows():
+        position_group, season = combo["position_group"], combo["season"]
+        keys = [k for k in keys_by_position[position_group] if k in adjusted]
+        if not keys:
+            continue
+        year = parse_season_year(season)
+        members = df[
+            (df["position_group"] == position_group)
+            & ((df["season_year"] - year).abs() <= season_span)
+        ]
+        members = dedupe_player_seasons(members)
+        comp_ids = members["competition_id"].to_numpy()
+        coefs = np.array([strengths[int(c)].coef for c in comp_ids])
+        draws = _draw_matrix(comp_ids, strengths, n_draws)
+
+        percentiles = []
+        for key in keys:
+            present = members[key].notna().to_numpy()
+            if not present.any():
+                continue
+            raw = members[key].to_numpy(dtype=float)[present]
+            point = raw * coefs[present]
+            drawn = raw[:, None] * draws[present]
+            sign = 1.0 if direction[key] else -1.0
+            n = len(raw)
+            point_pct = _percentile_rank(pd.Series(point), direction[key]).to_numpy()
+            drawn_pct = np.clip(
+                np.round(rankdata(sign * drawn, axis=0, method="average") / n * 100), 0, 100,
+            )
+            pct_low, pct_high = np.quantile(drawn_pct, [alpha, 1.0 - alpha], axis=1)
+            coef_low, coef_high = np.quantile(draws[present], [alpha, 1.0 - alpha], axis=1)
+            present_members = members[present]
+            for i, member in enumerate(present_members.itertuples(index=False)):
+                percentiles.append({
+                    "player_id": int(member.player_id),
+                    "season": str(member.season),
+                    "competition_id": int(member.competition_id),
+                    "club_id": int(member.club_id),
+                    "metric": key,
+                    "raw_value": float(raw[i]),
+                    "percentile": int(point_pct[i]),
+                    "sample_size": n,
+                    "adjusted_value": float(point[i]),
+                    "adjusted_low": float(raw[i] * coef_low[i]),
+                    "adjusted_high": float(raw[i] * coef_high[i]),
+                    # l'estimation ponctuelle reste toujours dans son intervalle
+                    "percentile_low": int(min(np.floor(pct_low[i]), point_pct[i])),
+                    "percentile_high": int(max(np.ceil(pct_high[i]), point_pct[i])),
+                })
+
+        results.append(PeerGroupResult(
+            peer_group_id=f"{position_group}|adj|{season}",
+            label=(
+                f"{position_labels[position_group]} · toutes compétitions, "
+                f"ajusté de la force · {season}"
+            ),
+            position_group=position_group,
+            tier=None,
+            season=season,
+            min_minutes=min_minutes,
+            sample_size=len(members),
+            percentiles=percentiles,
+            kind="adjusted",
+        ))
     return results

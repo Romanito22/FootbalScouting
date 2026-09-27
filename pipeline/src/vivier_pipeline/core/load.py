@@ -198,15 +198,19 @@ def replace_percentiles(conn: psycopg.Connection, groups: list[PeerGroupResult])
         conn.execute(
             """
             INSERT INTO peer_groups
-                (id, label, position_group, tier, season, min_minutes, sample_size)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
+                (id, label, kind, position_group, tier, season, min_minutes, sample_size)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
             """,
             (
-                group.peer_group_id, group.label, group.position_group, group.tier,
-                group.season, group.min_minutes, group.sample_size,
+                group.peer_group_id, group.label, group.kind, group.position_group,
+                group.tier, group.season, group.min_minutes, group.sample_size,
             ),
         )
 
+    adjusted_defaults = {
+        "adjusted_value": None, "adjusted_low": None, "adjusted_high": None,
+        "percentile_low": None, "percentile_high": None,
+    }
     rows_written = 0
     with conn.cursor() as cur:
         for group in groups:
@@ -214,12 +218,19 @@ def replace_percentiles(conn: psycopg.Connection, groups: list[PeerGroupResult])
                 """
                 INSERT INTO player_percentiles
                     (player_id, season, peer_group_id, metric, raw_value, percentile,
-                     competition_id, club_id, sample_size)
+                     competition_id, club_id, sample_size,
+                     adjusted_value, adjusted_low, adjusted_high,
+                     percentile_low, percentile_high)
                 VALUES (%(player_id)s, %(season)s, %(peer_group_id)s,
                         %(metric)s, %(raw_value)s, %(percentile)s,
-                        %(competition_id)s, %(club_id)s, %(sample_size)s)
+                        %(competition_id)s, %(club_id)s, %(sample_size)s,
+                        %(adjusted_value)s, %(adjusted_low)s, %(adjusted_high)s,
+                        %(percentile_low)s, %(percentile_high)s)
                 """,
-                [{**p, "peer_group_id": group.peer_group_id} for p in group.percentiles],
+                [
+                    {**adjusted_defaults, **p, "peer_group_id": group.peer_group_id}
+                    for p in group.percentiles
+                ],
             )
             rows_written += len(group.percentiles)
 

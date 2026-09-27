@@ -63,6 +63,7 @@ export async function runSearch(filters: SearchFilters): Promise<{
       WHERE ${playerPercentiles.playerId} = ${playerSeasonStats.playerId}
         AND ${playerPercentiles.season} = ${playerSeasonStats.season}
         AND ${peerGroups.season} = ${playerSeasonStats.season}
+        AND ${peerGroups.kind} = ${filters.percentileScope}
         AND ${playerPercentiles.competitionId} = ${playerSeasonStats.competitionId}
         AND ${playerPercentiles.clubId} = ${playerSeasonStats.clubId}
         AND ${playerPercentiles.metric} = ${filters.metric}

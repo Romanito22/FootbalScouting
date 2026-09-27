@@ -13,6 +13,8 @@ import {
   describePeerGroup, fetchRowPercentiles, type MetricPercentile, statRowKey,
 } from '@/lib/percentiles';
 import { addPlayerToShortlist } from '@/app/shortlists/actions';
+import { fetchCompetitionStrengths, referenceOf } from '@/lib/strength';
+import { AdjustedSection, LeagueStrengthLine } from './AdjustedSection';
 import { NotesSection } from './NotesSection';
 
 const RADAR_KEYS = [
@@ -49,6 +51,10 @@ export default async function PlayerPage({ params }: { params: Promise<{ id: str
     .orderBy(desc(playerSeasonStats.season), desc(playerSeasonStats.minutes));
 
   const percentilesByRow = await fetchRowPercentiles([playerId]);
+  const adjustedByRow = await fetchRowPercentiles([playerId], undefined, 'adjusted');
+  const strengths = await fetchCompetitionStrengths();
+  const strengthById = new Map(strengths.map((c) => [c.id, c]));
+  const referenceName = referenceOf(strengths)?.name ?? null;
   // Saisons dont une AUTRE ligne porte les percentiles (transfert en cours de
   // saison : seule la ligne la plus fournie en minutes est classée).
   const seasonsWithPercentiles = new Set(
@@ -119,6 +125,13 @@ export default async function PlayerPage({ params }: { params: Promise<{ id: str
               </p>
             </div>
 
+            {(() => {
+              const competition = strengthById.get(s.competitionId);
+              return competition ? (
+                <LeagueStrengthLine competition={competition} referenceName={referenceName} />
+              ) : null;
+            })()}
+
             {!eligible && (
               <p className="rounded-sm border border-spotlight/40 bg-spotlight/10 px-3 py-2 text-sm text-spotlight">
                 Moins de {MIN_MINUTES} minutes jouées : les métriques per-90 sont masquées
@@ -178,6 +191,17 @@ export default async function PlayerPage({ params }: { params: Promise<{ id: str
                     })}
                   </tbody>
                 </table>
+
+                {(() => {
+                  const competition = strengthById.get(s.competitionId);
+                  return competition ? (
+                    <AdjustedSection
+                      group={adjustedByRow.get(statRowKey(s))}
+                      competition={competition}
+                      referenceName={referenceName}
+                    />
+                  ) : null;
+                })()}
               </>
             )}
           </section>

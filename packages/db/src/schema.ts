@@ -21,6 +21,15 @@ export const shortlistStatusEnum = pgEnum('shortlist_status', [
   'a_observer', 'observe', 'prioritaire', 'ecarte',
 ]);
 
+/** Issue de l'estimation de force d'une compétition (pipeline core/strength.py). */
+export const strengthStatusEnum = pgEnum('strength_status', [
+  'reference',          // coefficient 1 par définition
+  'estimated',          // coefficient + intervalle publiés
+  'insufficient_links', // trop peu de joueurs de liaison
+  'disconnected',       // aucun chemin de liaisons vers la référence
+  'unstable',           // estimable dans moins de la moitié des tirages bootstrap
+]);
+
 /* ---------- Référentiel ---------- */
 
 export const competitions = pgTable('competitions', {
@@ -32,6 +41,15 @@ export const competitions = pgTable('competitions', {
   strengthCoef: numeric('strength_coef', { precision: 5, scale: 3 }),
   strengthCoefLow: numeric('strength_coef_low', { precision: 5, scale: 3 }),
   strengthCoefHigh: numeric('strength_coef_high', { precision: 5, scale: 3 }),
+  /** Pourquoi le coefficient est (ou n'est pas) renseigné. NULL = jamais calculé. */
+  strengthStatus: strengthStatusEnum('strength_status'),
+  /** Joueurs distincts reliant cette compétition à une autre. */
+  strengthLinks: integer('strength_links'),
+  /** Tirages bootstrap du coefficient, indexés conjointement entre
+   * compétitions : propagent l'incertitude aux percentiles ajustés. */
+  strengthSamples: jsonb('strength_samples').$type<Array<number | null>>(),
+  strengthModelVersion: text('strength_model_version'),
+  strengthComputedAt: timestamp('strength_computed_at', { withTimezone: true }),
   uefaCoef: numeric('uefa_coef', { precision: 6, scale: 3 }),
   sourceIds: jsonb('source_ids').$type<Record<string, string>>().notNull().default({}),
 }, (t) => [
@@ -138,8 +156,11 @@ export const playerSeasonStats = pgTable('player_season_stats', {
  * de l'afficher à l'utilisateur avec chaque percentile.
  */
 export const peerGroups = pgTable('peer_groups', {
-  id: text('id').primaryKey(),                 // 'CM|tier1|BIG5|2025-2026'
-  label: text('label').notNull(),              // 'Milieux centraux · Big 5 · 2025-26'
+  id: text('id').primaryKey(),                 // 'CM|tier1|2025-2026', 'CM|adj|2025-2026'
+  label: text('label').notNull(),              // 'Milieux centraux · Niveau 1 · 2025-2026'
+  /** 'tier' : même palier. 'adjusted' : toutes compétitions, valeurs ajustées
+   * de la force du championnat (phase 7) — percentiles avec intervalle. */
+  kind: text('kind').notNull().default('tier'),
   positionGroup: positionGroupEnum('position_group').notNull(),
   /** Palier des membres. Permet de retrouver sans ambiguïté LE groupe d'une
    * ligne de stats (même saison, même palier) — un joueur figure aussi dans
@@ -168,10 +189,23 @@ export const playerPercentiles = pgTable('player_percentiles', {
   /** Effectif réel du classement sur CETTE métrique : peut être inférieur à
    * celui du groupe quand une source ne fournit pas la métrique. */
   sampleSize: integer('sample_size'),
+  /** Groupes 'adjusted' uniquement : valeur × coefficient de force (et son
+   * intervalle), percentile et son intervalle de confiance. */
+  adjustedValue: numeric('adjusted_value'),
+  adjustedLow: numeric('adjusted_low'),
+  adjustedHigh: numeric('adjusted_high'),
+  percentileLow: smallint('percentile_low'),
+  percentileHigh: smallint('percentile_high'),
 }, (t) => [
   primaryKey({ columns: [t.playerId, t.season, t.peerGroupId, t.metric] }),
   index('pp_group_metric_idx').on(t.peerGroupId, t.metric, t.percentile),
   check('pp_percentile_range', sql`${t.percentile} BETWEEN 0 AND 100`),
+  check(
+    'pp_percentile_interval',
+    sql`(${t.percentileLow} IS NULL AND ${t.percentileHigh} IS NULL)
+      OR (${t.percentileLow} BETWEEN 0 AND ${t.percentile}
+          AND ${t.percentileHigh} BETWEEN ${t.percentile} AND 100)`,
+  ),
 ]);
 
 /* ---------- Recherche (phase 4) ---------- */

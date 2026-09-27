@@ -23,6 +23,20 @@ export interface MetricPercentile {
   rawValue: number | null;
   /** Effectif réel du classement sur cette métrique (≤ effectif du groupe). */
   sampleSize: number;
+  /** Groupes 'adjusted' uniquement (phase 7) : valeur × coefficient de force
+   * de la compétition, et intervalles de confiance associés. */
+  adjustedValue: number | null;
+  adjustedLow: number | null;
+  adjustedHigh: number | null;
+  percentileLow: number | null;
+  percentileHigh: number | null;
+}
+
+/** 'tier' : même palier. 'adjusted' : toutes compétitions, ajusté de la force. */
+export type PeerGroupKind = 'tier' | 'adjusted';
+
+function toNumber(value: string | null): number | null {
+  return value === null ? null : Number(value);
 }
 
 export interface RowPercentiles {
@@ -35,11 +49,12 @@ export interface RowPercentiles {
 
 /**
  * Percentiles de chaque ligne de stats, dans le groupe de pairs centré sur
- * sa propre saison (celui qui porte le même palier que sa compétition).
+ * sa propre saison : celui de son palier (`kind = 'tier'`, par défaut) ou
+ * le groupe « toutes compétitions » ajusté de la force (`'adjusted'`).
  * Clé : statRowKey.
  */
 export async function fetchRowPercentiles(
-  playerIds: number[], metrics?: string[],
+  playerIds: number[], metrics?: string[], kind: PeerGroupKind = 'tier',
 ): Promise<Map<string, RowPercentiles>> {
   const result = new Map<string, RowPercentiles>();
   if (playerIds.length === 0) return result;
@@ -47,6 +62,7 @@ export async function fetchRowPercentiles(
   const conditions = [
     inArray(playerPercentiles.playerId, playerIds),
     eq(peerGroups.season, playerPercentiles.season),
+    eq(peerGroups.kind, kind),
   ];
   if (metrics) conditions.push(inArray(playerPercentiles.metric, metrics));
 
@@ -60,6 +76,11 @@ export async function fetchRowPercentiles(
       rawValue: playerPercentiles.rawValue,
       percentile: playerPercentiles.percentile,
       sampleSize: playerPercentiles.sampleSize,
+      adjustedValue: playerPercentiles.adjustedValue,
+      adjustedLow: playerPercentiles.adjustedLow,
+      adjustedHigh: playerPercentiles.adjustedHigh,
+      percentileLow: playerPercentiles.percentileLow,
+      percentileHigh: playerPercentiles.percentileHigh,
       peerGroupId: peerGroups.id,
       peerGroupLabel: peerGroups.label,
       peerGroupSampleSize: peerGroups.sampleSize,
@@ -90,8 +111,13 @@ export async function fetchRowPercentiles(
     }
     entry.byMetric.set(row.metric, {
       percentile: row.percentile,
-      rawValue: row.rawValue === null ? null : Number(row.rawValue),
+      rawValue: toNumber(row.rawValue),
       sampleSize: row.sampleSize ?? row.peerGroupSampleSize,
+      adjustedValue: toNumber(row.adjustedValue),
+      adjustedLow: toNumber(row.adjustedLow),
+      adjustedHigh: toNumber(row.adjustedHigh),
+      percentileLow: row.percentileLow,
+      percentileHigh: row.percentileHigh,
     });
   }
   return result;

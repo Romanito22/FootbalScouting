@@ -11,6 +11,9 @@ export interface SearchFilters {
   tier: number | null;
   metric: string | null;
   percentileMin: number | null;
+  /** Référentiel du seuil de percentile : groupe de palier, ou toutes
+   * compétitions ajusté de la force du championnat (phase 7). */
+  percentileScope: 'tier' | 'adjusted';
 }
 
 export const EMPTY_FILTERS: SearchFilters = {
@@ -24,6 +27,7 @@ export const EMPTY_FILTERS: SearchFilters = {
   tier: null,
   metric: null,
   percentileMin: null,
+  percentileScope: 'tier',
 };
 
 type RawSearchParams = Record<string, string | string[] | undefined>;
@@ -47,6 +51,7 @@ export function parseSearchFilters(searchParams: RawSearchParams): SearchFilters
     (p): p is PositionGroup => (OUTFIELD_POSITION_GROUPS as readonly string[]).includes(p),
   );
   const foot = first(searchParams.foot);
+  const scope = first(searchParams.percentileScope);
 
   return {
     positions,
@@ -59,6 +64,7 @@ export function parseSearchFilters(searchParams: RawSearchParams): SearchFilters
     tier: toInt(first(searchParams.tier)),
     metric: first(searchParams.metric) || null,
     percentileMin: toInt(first(searchParams.percentileMin)),
+    percentileScope: scope === 'adjusted' ? 'adjusted' : 'tier',
   };
 }
 
@@ -74,5 +80,6 @@ export function filtersToSearchParams(filters: SearchFilters): URLSearchParams {
   if (filters.tier !== null) params.set('tier', String(filters.tier));
   if (filters.metric) params.set('metric', filters.metric);
   if (filters.percentileMin !== null) params.set('percentileMin', String(filters.percentileMin));
+  if (filters.percentileScope !== 'tier') params.set('percentileScope', filters.percentileScope);
   return params;
 }

@@ -6,7 +6,13 @@ import pandas as pd
 import pytest
 
 from vivier_pipeline.core import percentiles as percentiles_module
-from vivier_pipeline.core.percentiles import PeerGroupResult, compute_peer_groups, parse_season_year
+from vivier_pipeline.core.percentiles import (
+    LeagueStrength,
+    PeerGroupResult,
+    compute_adjusted_groups,
+    compute_peer_groups,
+    parse_season_year,
+)
 
 POSITION_LABELS = {"CM": "Milieux centraux", "DC": "Défenseurs centraux", "GK": "Gardiens"}
 
@@ -20,6 +26,7 @@ def fixed_metric_direction(monkeypatch: pytest.MonkeyPatch) -> None:
         percentiles_module, "metric_direction",
         lambda: {"goals": True, "fouls_committed": False, "saves": True},
     )
+    monkeypatch.setattr(percentiles_module, "league_adjusted_keys", lambda: ["goals"])
     monkeypatch.setattr(
         percentiles_module, "metrics_by_position",
         lambda: {
@@ -205,3 +212,125 @@ def test_percentile_rows_carry_their_stat_row_identity() -> None:
 
 def test_empty_input_returns_no_groups() -> None:
     assert _compute([]) == []
+
+
+
+# --- percentiles « toutes compétitions » ajustés de la force (phase 7) ---
+
+def _fixed(coef: float, n: int = 50) -> LeagueStrength:
+    """Coefficient sans incertitude : tous les tirages valent l'estimation."""
+    return LeagueStrength(coef=coef, samples=[coef] * n)
+
+
+def _adjusted(rows: list[dict], strengths: dict[int, LeagueStrength]) -> list[PeerGroupResult]:
+    return compute_adjusted_groups(
+        pd.DataFrame(rows), strengths, min_minutes=600, season_span=2,
+        position_labels=POSITION_LABELS, ci_level=0.9,
+    )
+
+
+def test_adjusted_ranking_accounts_for_league_strength() -> None:
+    """0.5 but/90 dans la ligue de référence vaut plus que 0.8 dans une
+    ligue deux fois plus faible (0.8 × 0.5 = 0.4)."""
+    [group] = _adjusted(
+        [
+            _row(1, "2022", "CM", 1, goals=0.5, fouls=0.0, competition_id=1),
+            _row(2, "2022", "CM", 1, goals=0.8, fouls=0.0, competition_id=2),
+        ],
+        {1: _fixed(1.0), 2: _fixed(0.5)},
+    )
+    by_player = {p["player_id"]: p for p in group.percentiles}
+    assert by_player[1]["percentile"] > by_player[2]["percentile"]
+    assert by_player[2]["adjusted_value"] == pytest.approx(0.4)
+    assert by_player[2]["raw_value"] == pytest.approx(0.8)
+
+
+def test_adjusted_group_pools_all_tiers_and_is_labelled_as_such() -> None:
+    [group] = _adjusted(
+        [
+            _row(1, "2022", "CM", 1, goals=0.5, fouls=0.0, competition_id=1),
+            _row(2, "2022", "CM", 2, goals=0.8, fouls=0.0, competition_id=2),
+        ],
+        {1: _fixed(1.0), 2: _fixed(0.5)},
+    )
+    assert group.kind == "adjusted"
+    assert group.tier is None
+    assert group.peer_group_id == "CM|adj|2022"
+    assert "toutes compétitions" in group.label
+    assert group.sample_size == 2
+
+
+def test_rows_without_league_coefficient_are_left_out() -> None:
+    """Sans coefficient, pas d'ajustement possible : jamais un 1.0 implicite."""
+    [group] = _adjusted(
+        [
+            _row(1, "2022", "CM", 1, goals=0.5, fouls=0.0, competition_id=1),
+            _row(2, "2022", "CM", 1, goals=0.8, fouls=0.0, competition_id=99),
+        ],
+        {1: _fixed(1.0)},
+    )
+    assert {p["player_id"] for p in group.percentiles} == {1}
+    assert group.sample_size == 1
+
+
+def test_only_league_adjusted_metrics_get_adjusted_percentiles() -> None:
+    [group] = _adjusted(
+        [_row(1, "2022", "CM", 1, goals=0.5, fouls=2.0, competition_id=1)],
+        {1: _fixed(1.0)},
+    )
+    assert {p["metric"] for p in group.percentiles} == {"goals"}
+
+
+def test_no_uncertainty_means_interval_collapses_on_the_estimate() -> None:
+    [group] = _adjusted(
+        [
+            _row(1, "2022", "CM", 1, goals=0.5, fouls=0.0, competition_id=1),
+            _row(2, "2022", "CM", 1, goals=0.8, fouls=0.0, competition_id=2),
+        ],
+        {1: _fixed(1.0), 2: _fixed(0.5)},
+    )
+    for p in group.percentiles:
+        assert p["percentile_low"] == p["percentile"] == p["percentile_high"]
+        assert p["adjusted_low"] == pytest.approx(p["adjusted_value"])
+        assert p["adjusted_high"] == pytest.approx(p["adjusted_value"])
+
+
+def test_reference_league_player_still_gets_an_interval_from_rivals_uncertainty() -> None:
+    """Coefficient exactement 1 pour la référence, mais le classement dépend
+    aussi de la force (incertaine) des ligues de ses concurrents."""
+    uncertain = LeagueStrength(coef=0.5, samples=[0.3, 0.4, 0.5, 0.6, 0.7] * 20)
+    [group] = _adjusted(
+        [
+            _row(1, "2022", "CM", 1, goals=0.5, fouls=0.0, competition_id=1),
+            _row(2, "2022", "CM", 1, goals=0.8, fouls=0.0, competition_id=2),
+            _row(3, "2022", "CM", 1, goals=1.0, fouls=0.0, competition_id=2),
+        ],
+        {1: _fixed(1.0, 100), 2: uncertain},
+    )
+    ref = next(p for p in group.percentiles if p["player_id"] == 1)
+    assert ref["adjusted_low"] == ref["adjusted_value"] == ref["adjusted_high"]
+    assert ref["percentile_low"] < ref["percentile_high"]
+    for p in group.percentiles:
+        assert p["percentile_low"] <= p["percentile"] <= p["percentile_high"]
+
+
+def test_adjusted_value_interval_follows_coefficient_interval() -> None:
+    uncertain = LeagueStrength(coef=0.5, samples=[0.4, 0.5, 0.6] * 30)
+    [group] = _adjusted(
+        [_row(1, "2022", "CM", 1, goals=1.0, fouls=0.0, competition_id=2)],
+        {2: uncertain},
+    )
+    [p] = group.percentiles
+    assert p["adjusted_low"] == pytest.approx(0.4)
+    assert p["adjusted_value"] == pytest.approx(0.5)
+    assert p["adjusted_high"] == pytest.approx(0.6)
+
+
+def test_unestimable_bootstrap_draws_fall_back_to_the_estimate() -> None:
+    [group] = _adjusted(
+        [_row(1, "2022", "CM", 1, goals=1.0, fouls=0.0, competition_id=2)],
+        {2: LeagueStrength(coef=0.5, samples=[None, None, 0.5, None])},
+    )
+    [p] = group.percentiles
+    assert p["adjusted_low"] == pytest.approx(0.5)
+    assert p["adjusted_high"] == pytest.approx(0.5)

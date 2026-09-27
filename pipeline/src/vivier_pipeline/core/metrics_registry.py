@@ -5,7 +5,7 @@ libellé ne doit être dupliquée ici — uniquement lue depuis ce fichier."""
 import json
 from functools import lru_cache
 from pathlib import Path
-from typing import TypedDict
+from typing import NotRequired, TypedDict
 
 METRICS_REGISTRY_PATH = Path(__file__).resolve().parents[3] / "metrics.json"
 
@@ -18,11 +18,21 @@ class MetricDef(TypedDict):
     higherIsBetter: bool
     format: str
     appliesTo: list[str]
+    leagueAdjusted: NotRequired[bool]
+
+
+class LeagueStrengthParams(TypedDict):
+    minMinutes: int
+    maxSeasonGap: int
+    minLinkPlayers: int
+    ciLevel: float
+    bootstrapSamples: int
 
 
 class MetricsRegistry(TypedDict):
     minMinutes: int
     peerGroupSeasonSpan: int
+    leagueStrength: LeagueStrengthParams
     positionGroups: list[str]
     positionGroupLabels: dict[str, str]
     metrics: list[MetricDef]
@@ -51,3 +61,9 @@ def metrics_by_position() -> dict[str, list[str]]:
         position: [m["key"] for m in registry["metrics"] if position in m["appliesTo"]]
         for position in registry["positionGroups"]
     }
+
+
+def league_adjusted_keys() -> list[str]:
+    """Métriques de volume ajustées de la force du championnat, dans l'ordre
+    du registre (cf. `leagueAdjusted` dans packages/metrics)."""
+    return [m["key"] for m in load_registry()["metrics"] if m.get("leagueAdjusted", False)]

@@ -22,6 +22,13 @@
       "when": 1790513956914,
       "tag": "0002_silent_amphibian",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1790514677446,
+      "tag": "0003_cynical_maelstrom",
+      "breakpoints": true
     }
   ]
 }

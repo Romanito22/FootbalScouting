@@ -17,16 +17,20 @@
   comme lui ? »
 
 - **Vecteur qualité** : les percentiles déjà calculés (core/percentiles.py),
-  PAS des z-scores bruts. Piège évité ici : la similarité cosinus est
-  invariante à l'échelle — deux joueurs au même profil mais à des niveaux
-  très différents (ex. z-scores [1, 0.5] contre [2, 1], simple multiple
-  scalaire) auraient une similarité cosinus de 1.0 sur des z-scores bruts,
-  strictement l'inverse de ce que veut la spec (« 0,94 en style mais 0,40
-  en niveau »). Le percentile, lui, dépend non-linéairement de toute la
-  distribution du groupe de pairs : un même profil relatif à deux niveaux
-  différents y donne des vecteurs qui ne sont PAS de simples multiples
-  l'un de l'autre, donc une similarité cosinus qui baisse réellement avec
-  l'écart de niveau. Répond à « est-il aussi bon ? »
+  PAS des z-scores bruts. Ajusté du championnat (v2, phase 7) : pour les
+  métriques `leagueAdjusted`, le percentile « toutes compétitions » calculé
+  sur les valeurs × coefficient de force remplace le percentile de palier
+  quand il existe — sans quoi le meilleur ailier d'un championnat faible et
+  celui de la Premier League auraient le même vecteur de niveau. Piège évité
+  ici : la similarité cosinus est invariante à l'échelle — deux joueurs au
+  même profil mais à des niveaux très différents (ex. z-scores [1, 0.5]
+  contre [2, 1], simple multiple scalaire) auraient une similarité cosinus
+  de 1.0 sur des z-scores bruts, strictement l'inverse de ce que veut la
+  spec (« 0,94 en style mais 0,40 en niveau »). Le percentile, lui, dépend
+  non-linéairement de toute la distribution du groupe de pairs : un même
+  profil relatif à deux niveaux différents y donne des vecteurs qui ne sont
+  PAS de simples multiples l'un de l'autre, donc une similarité cosinus qui
+  baisse réellement avec l'écart de niveau. Répond à « est-il aussi bon ? »
 
 Puis réduction vers 32 dimensions (fixées par le schéma `vector(32)`) via
 `TruncatedSVD`, pas `PCA` : PCA centre les données sur leur moyenne avant
@@ -48,7 +52,7 @@ import numpy as np
 import pandas as pd
 from sklearn.decomposition import TruncatedSVD
 
-MODEL_VERSION = "v1"
+MODEL_VERSION = "v2"
 VECTOR_DIM = 32
 
 
@@ -131,11 +135,18 @@ def compute_vectors(
     """`rows` : une ligne par (player_id, season), colonnes player_id,
     season, position_group, metrics (dict, per-90 brutes) et percentiles
     (dict, 0-100) — déjà filtrées sur le seuil de minutes en amont (même
-    contrat que core/percentiles.fetch_percentile_input)."""
+    contrat que core/percentiles.fetch_percentile_input). Colonne
+    facultative `adjusted_percentiles` (dict ou None) : percentiles
+    « toutes compétitions » ajustés, prioritaires sur ceux de palier."""
     if rows.empty:
         return []
 
     df = rows.reset_index(drop=True)
+    if "adjusted_percentiles" in df.columns:
+        df["percentiles"] = [
+            {**(tier or {}), **(adjusted or {})}
+            for tier, adjusted in zip(df["percentiles"], df["adjusted_percentiles"], strict=True)
+        ]
     metrics_df, percentiles_df = _impute_missing(
         pd.json_normalize(df["metrics"].tolist()).reindex(columns=metric_keys).astype(float),
         pd.json_normalize(df["percentiles"].tolist()).reindex(columns=metric_keys).astype(float),

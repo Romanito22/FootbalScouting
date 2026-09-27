@@ -20,6 +20,10 @@ def fetch_vector_input(conn: psycopg.Connection, min_minutes: int) -> pd.DataFra
     aussi dans les groupes des saisons voisines, et mélanger ces
     classements donnerait un vecteur qualité incohérent.
 
+    Les percentiles « toutes compétitions » ajustés de la force du
+    championnat (phase 7) sont lus à part : compute_vectors les substitue
+    aux percentiles de palier pour les métriques concernées.
+
     Un joueur sans percentile pour cette saison (peer_groups pas encore
     recalculés) est exclu : pas de vecteur qualité sans percentile."""
     rows = conn.execute(
@@ -33,9 +37,21 @@ def fetch_vector_input(conn: psycopg.Connection, min_minutes: int) -> pd.DataFra
                    WHERE pp.player_id = pss.player_id
                      AND pp.season = pss.season
                      AND pg.season = pss.season
+                     AND pg.kind = 'tier'
                      AND pp.competition_id = pss.competition_id
                      AND pp.club_id = pss.club_id
-               ) AS percentiles
+               ) AS percentiles,
+               (
+                   SELECT jsonb_object_agg(pp.metric, pp.percentile)
+                   FROM player_percentiles pp
+                   JOIN peer_groups pg ON pg.id = pp.peer_group_id
+                   WHERE pp.player_id = pss.player_id
+                     AND pp.season = pss.season
+                     AND pg.season = pss.season
+                     AND pg.kind = 'adjusted'
+                     AND pp.competition_id = pss.competition_id
+                     AND pp.club_id = pss.club_id
+               ) AS adjusted_percentiles
         FROM player_season_stats pss
         JOIN players p ON p.id = pss.player_id
         WHERE pss.minutes >= %s
@@ -45,7 +61,11 @@ def fetch_vector_input(conn: psycopg.Connection, min_minutes: int) -> pd.DataFra
         (min_minutes,),
     ).fetchall()
     df = pd.DataFrame(
-        rows, columns=["player_id", "season", "position_group", "metrics", "percentiles"],
+        rows,
+        columns=[
+            "player_id", "season", "position_group", "metrics",
+            "percentiles", "adjusted_percentiles",
+        ],
     )
     return df[df["percentiles"].notna()].reset_index(drop=True)
 
